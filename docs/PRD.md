@@ -3,7 +3,7 @@
 **Version:** 1.0  
 **Status:** Planning 
 **Last Updated:** 2026-03-25  
-**Author:** SynapseRoute AI Team
+**Author:** Meet Patel
 
 ---
 
