@@ -148,6 +148,14 @@ subgraph ML
     D4[Traffic Prediction]
 end
 
+%% ================= ROUTING ML =================
+subgraph RoutingML["Routing ML Microservice"]
+    R1[FastAPI Gateway]
+    R2[Driver Behavior Model]
+    R3[Route Sequencer - TSP Heuristics]
+    R4[Simulation Evaluator]
+end
+
 %% ================= REALTIME =================
 subgraph Realtime
     E1[Phoenix Server]
@@ -195,7 +203,13 @@ D3 --> C3
 D4 --> C3
 
 C3 --> C4
+C3 --> R1
 C3 --> C5
+
+R1 --> R2
+R2 --> R3
+R3 --> R4
+R4 --> C4
 
 C4 --> F1
 C5 --> F1
@@ -245,6 +259,9 @@ class E1,E2,E3,E4 realtime;
 class F1 events;
 class G1,G2,G3 data;
 class H1,H2,H3,H4 observability;
+
+classDef routingml fill:#4a1d96,stroke:#a78bfa,color:#ffffff,stroke-width:2px;
+class R1,R2,R3,R4 routingml;
 ```
 
 ### Component Interaction
@@ -260,14 +277,26 @@ class H1,H2,H3,H4 observability;
 |                                                  |
 |  /orders   /geocode   /simulate                  |
 |  /predict  /route     /track                     |
-+----+----------------------------------+----------+
-     |                                  |
-+----v--------------+        +----------v----------+
-| Route Engine      |        |   ML Inference      |
-| Dijkstra / A*     |        |   Python Sidecar    |
-| (Elixir)          |        |   XGBoost (.pkl)    |
-+-------------------+        +---------------------+
++----+------------------+----------------+---------+
+     |                  |                |
++----v--------------+   |   +------------v-----------+
+| Route Engine      |   |   |   ML Inference         |
+| Dijkstra / A*     |   |   |   Python Sidecar       |
+| (Elixir)          |   |   |   XGBoost (.pkl)       |
++-------------------+   |   +------------------------+
+                        |
+         +--------------v--------------+
+         | Routing ML Microservice     |
+         | Python / FastAPI            |
+         |                             |
+         | · Driver Behavior Model     |
+         | · TSP Heuristic Sequencer   |
+         | · Simulation Evaluator      |
+         | · OR-Tools / Custom Solver  |
+         +-----------------------------+
 ```
+
+> **Inter-service communication:** The Phoenix backend calls the Routing ML Microservice over HTTP/JSON. The microservice runs as an independent Python process, accepting route optimization requests and returning optimized sequences with confidence scores. The existing Elixir-based Dijkstra/A* engine handles lightweight re-routing, while the ML microservice handles batch route planning with learned driver behavior models.
 
 ---
 
@@ -311,12 +340,27 @@ class H1,H2,H3,H4 observability;
 
 ### 7.5 Route Optimization Engine
 
-**What it does:** Computes the optimal stop sequence for each driver using Dijkstra or A* on a delivery graph. Minimizes total travel distance while respecting driver load.
+**What it does:** Computes the optimal stop sequence for each driver using Dijkstra or A* on a delivery graph. Minimizes total travel distance while respecting driver load and risk-weighted constraints.
 
-| | Detail |
+| Stage | Detail |
 |---|---|
-| Input | List of geocoded delivery coords, driver list, depot location |
-| Output | Ordered stop sequence per driver with ETA per stop |
+| **Input** | Stops (geocoded coords), time windows, delivery constraints (priority, vehicle capacity), driver list, depot location |
+| **Preprocessing** | Normalize coordinates, build distance/time matrices, apply zone-level risk weights to edges |
+| **Route Sequencing** | Hybrid approach — ML-predicted sequence as initial seed, refined by TSP heuristic solver (nearest-neighbor + 2-opt improvement) |
+| **Output** | Ordered stop sequence per driver, ETA per stop, total route distance/duration, **confidence score** (0–1) indicating route quality relative to historical driver behavior |
+
+### 7.5.1 Advanced Routing Engine (ML + Optimization Hybrid)
+
+**What it does:** An advanced routing layer inspired by [Amazon's Last Mile Routing Research Challenge](https://amazon-sagemaker-amt.com/). Combines machine learning (driver behavior modeling), heuristic optimization (TSP-based sequencing), and simulation-based evaluation to produce routes that reflect how experienced drivers actually navigate — not just shortest-path theory.
+
+| Component | Detail |
+|---|---|
+| **Driver Behavior Model** | ML model trained on historical delivery sequences to predict likely stop ordering patterns. Captures implicit driver preferences (e.g., avoiding left turns, preferring arterial roads, clustering by neighborhood). |
+| **TSP Heuristic Sequencer** | Solves the Travelling Salesman Problem variant using OR-Tools or custom heuristics (nearest-neighbor initialization + 2-opt/3-opt local search). Uses ML-predicted sequence as a warm start. |
+| **Simulation Evaluator** | Evaluates candidate routes by simulating execution — estimates total time, risk exposure, and delivery success probability. Ranks route alternatives by composite score. |
+| **Feedback Integration** | Completed delivery sequences feed back into the driver behavior model, enabling continuous learning and route quality improvement over time. |
+
+> **Relationship to 7.5:** The Advanced Routing Engine extends the base Dijkstra/A* engine. For real-time re-routing (7.6), the lightweight Elixir-based engine handles fast recalculations. For batch route planning at dispatch time, the ML-hybrid engine produces higher-quality initial routes via the Python/FastAPI microservice.
 
 ### 7.6 Re-optimization Engine
 
@@ -406,41 +450,48 @@ class H1,H2,H3,H4 observability;
     → failure_probability, risk_tier assigned
         |
         v
-[4] Route Optimization Engine batches all pending orders
-    → Optimal stop sequence + ETA computed per driver
+[4] Routing ML Engine processes batch
+    → Driver behavior model predicts optimal sequencing
+    → TSP heuristic refines stop order
+    → Simulation evaluator scores candidate routes
         |
         v
-[5] Routes + risk scores rendered on live map
+[5] Route Optimization Engine finalizes routes
+    → Optimal stop sequence + ETA + confidence score computed per driver
+        |
+        v
+[6] Routes + risk scores rendered on live map
     → Pins colored by risk tier, polylines drawn
         |
         v
-[6] Simulation Engine advances driver positions (every 5s)
+[7] Simulation Engine advances driver positions (every 5s)
     → Driver icon moves on map
         |
         v
-[7] Re-optimization Engine monitors for triggers
+[8] Re-optimization Engine monitors for triggers
     → High-risk stop / simulated failure → route recalculated
         |
         v
-[8] Updated route pushed to frontend via Phoenix Channels
+[9] Updated route pushed to frontend via Phoenix Channels
     → Notification surfaced, polyline updated
         |
         v
-[9] Delivery marked complete / failed
+[10] Delivery marked complete / failed
     → Outcome logged to Feedback Layer
     → Zone failure rate updated for future predictions
+    → Completed sequence fed back to driver behavior model
 ```
 
 ### Simplified Flow
 
 ```
-Order → Geocode → Predict → Optimize → Dispatch
-                                          |
-                                    [Simulation Loop]
-                                          |
-                               Monitor → Trigger? → Re-optimize
-                                          |
-                                       Complete → Feedback
+Order → Geocode → Predict → Routing ML Engine → Optimize → Dispatch
+                                                    |
+                                              [Simulation Loop]
+                                                    |
+                                         Monitor → Trigger? → Re-optimize
+                                                    |
+                                                 Complete → Feedback → ML Model Update
 ```
 
 ---
@@ -656,7 +707,10 @@ failure_probability >= 0.65             →  HIGH   (red)
 | Map | Leaflet.js (MVP) / Mapbox GL JS (v2) | Leaflet is zero-config; Mapbox for polish |
 | Backend | Phoenix (Elixir) | Fault-tolerant, native WebSocket support via Channels, lightweight processes for driver simulation |
 | Route Engine | Custom Dijkstra / A* (Elixir) | Full control, leverages BEAM concurrency |
-| ML Models | Python sidecar (scikit-learn / XGBoost + joblib) | Lightweight, serializable, fast inference; called from Phoenix over HTTP |
+| Routing ML Microservice | Python (FastAPI) | Dedicated service for ML-based route optimization; communicates with Phoenix backend over HTTP/JSON |
+| Route Optimization Solver | Google OR-Tools / custom heuristics | TSP/VRP solver for stop sequencing; OR-Tools provides production-grade constraint programming with Python bindings |
+| ML — Route Sequencing | scikit-learn / XGBoost | Driver behavior modeling and sequence prediction; trained on historical delivery patterns to generate warm-start solutions |
+| ML — Failure Prediction | Python sidecar (scikit-learn / XGBoost + joblib) | Lightweight, serializable, fast inference; called from Phoenix over HTTP |
 | Real-Time | Phoenix Channels + Phoenix PubSub | Native WebSocket transport; ETS-backed PubSub for driver position events |
 | Geocoding | OpenStreetMap Nominatim | Free, no API key, sufficient for demo |
 | State (MVP) | ETS / Agent (in-memory Elixir) | No DB required for hackathon scope; leverages BEAM's built-in state primitives |
@@ -747,6 +801,35 @@ failure_probability >= 0.65             →  HIGH   (red)
 | Driver Behavior Modeling | Personalized ETA and failure models per driver based on historical patterns |
 | Natural Language Dispatch | "Schedule 12 deliveries for tomorrow morning" parsed and dispatched by LLM layer |
 | Customer Communication Layer | Automated ETA updates and re-scheduling via SMS/WhatsApp triggered by risk events |
+
+---
+
+## 16.1 Routing Engine — Limitations
+
+The Advanced Routing Engine (7.5.1) is inspired by Amazon's Last Mile Routing Research Challenge. The base research model has inherent constraints that inform how it is integrated into SynapseRoute:
+
+| Limitation | Detail |
+|---|---|
+| **Offline by design** | The research model operates on pre-computed route data. It does not natively support real-time inputs (live traffic, sudden cancellations, driver location updates). |
+| **Not real-time** | Route computation involves ML inference + heuristic optimization + simulation evaluation — a pipeline that may take seconds to complete. Not suitable for sub-second re-routing during active delivery. |
+| **Research-focused** | The original challenge optimized for route quality on historical data. It was not designed for production deployment with SLA requirements, high availability, or horizontal scaling. |
+| **Data dependency** | Model quality depends on historical driver sequence data. In cold-start scenarios (new city, new driver pool), the model falls back to pure heuristic optimization without learned behavior priors. |
+
+> **Implication:** SynapseRoute uses this engine for **batch route planning at dispatch time** (where latency tolerance is higher), not for real-time re-routing. The lightweight Elixir-based Dijkstra/A* engine handles all real-time re-optimization (7.6).
+
+---
+
+## 16.2 Routing Engine — Enhancements over Research Baseline
+
+SynapseRoute extends the base research model with production-grade capabilities:
+
+| Enhancement | Detail |
+|---|---|
+| **Real-time re-routing** | The Elixir-based re-optimization engine (7.6) handles dynamic route changes during execution. When a trigger fires, the remaining route is recalculated in < 3 seconds using the lightweight A* engine — no dependency on the ML microservice. |
+| **Failure prediction integration** | Route optimization is risk-aware. The failure predictor (7.4) scores each stop before routing, and the optimizer uses risk tiers to adjust stop sequencing — high-risk stops are scheduled earlier in the route when driver capacity is highest, or flagged for proactive intervention. |
+| **API-based deployment** | The research model is wrapped in a FastAPI microservice with versioned endpoints (`POST /api/route/optimize`). This enables independent scaling, A/B testing of routing strategies, and clean separation from the core Phoenix backend. |
+| **Feedback loop for continuous learning** | Completed delivery sequences (actual stop order, time per stop, success/failure outcomes) are fed back into the driver behavior model. This creates a continuous learning cycle: routes improve as the system accumulates operational data. The feedback pipeline runs asynchronously — it does not block active routing. |
+| **Confidence scoring** | Each optimized route includes a confidence score (0–1) indicating how closely the ML-predicted sequence aligns with the heuristic-optimized result. Low-confidence routes are flagged for dispatcher review before dispatch. |
 
 ---
 

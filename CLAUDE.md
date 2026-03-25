@@ -14,6 +14,7 @@ SynapseRoute AI is a predictive, adaptive last-mile delivery intelligence platfo
 - **Backend:** Phoenix (Elixir)
 - **Route Engine:** Custom Dijkstra/A* (Elixir)
 - **ML:** Python sidecar service (scikit-learn / XGBoost, serialized with joblib), called from Phoenix over HTTP
+- **Routing ML Microservice:** Python (FastAPI) — ML-based route optimization with OR-Tools, driver behavior modeling, and simulation evaluation
 - **Real-Time:** Phoenix Channels + Phoenix PubSub
 - **Geocoding:** OpenStreetMap Nominatim
 - **State (MVP):** ETS / Agent (in-memory Elixir); PostgreSQL + Ecto planned for v2
@@ -22,7 +23,7 @@ SynapseRoute AI is a predictive, adaptive last-mile delivery intelligence platfo
 
 ## Architecture
 
-Six-layer design (Input → Processing → Intelligence → Decision → Execution → Feedback). The frontend communicates with the Phoenix backend via REST and Phoenix Channels (WebSocket). ML inference runs in a Python sidecar service; Phoenix calls it over HTTP. Observability is built on `:telemetry`, OpenTelemetry, and Phoenix LiveDashboard.
+Six-layer design (Input → Processing → Intelligence → Decision → Execution → Feedback). The frontend communicates with the Phoenix backend via REST and Phoenix Channels (WebSocket). ML inference runs in a Python sidecar service; Phoenix calls it over HTTP. A dedicated Routing ML Microservice (Python/FastAPI) handles advanced route optimization using driver behavior modeling, TSP heuristics, and simulation-based evaluation. Observability is built on `:telemetry`, OpenTelemetry, and Phoenix LiveDashboard.
 
 ### Core Modules
 
@@ -31,6 +32,7 @@ Six-layer design (Input → Processing → Intelligence → Decision → Executi
 3. **Simulation Engine** — driver position simulation with tick-based advancement
 4. **Failure Predictor** — XGBoost classifier (features: hour, day, location type, zone failure rate, distance, weather, is_evening, is_weekend; target AUC-ROC ≥ 0.75)
 5. **Route Optimization** — Dijkstra/A* with risk-weighted edges
+5.1. **Advanced Routing Engine** — ML + optimization hybrid inspired by Amazon's Last Mile Routing Challenge (driver behavior model, TSP heuristics, simulation evaluator)
 6. **Re-optimization Engine** — real-time re-routing during execution
 7. **Notification System** — alerts for high-risk deliveries
 8. **Analytics Engine** — dashboard summary stats
