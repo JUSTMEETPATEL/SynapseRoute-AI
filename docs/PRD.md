@@ -158,10 +158,10 @@ end
 
 %% ================= REALTIME =================
 subgraph Realtime
-    E1[Phoenix Server]
+  E1[Fastify Realtime API]
     E2[Driver Manager]
     E3[Driver Processes]
-    E4[PubSub]
+  E4[Redis Pub/Sub]
 end
 
 %% ================= EVENTS =================
@@ -181,7 +181,7 @@ subgraph Observability
     H1[OpenTelemetry Collector]
     H2[Prometheus]
     H3[Grafana]
-    H4[Phoenix LiveDashboard]
+  H4[Service Health Dashboard]
 end
 
 %% ================= FLOW =================
@@ -271,9 +271,9 @@ class R1,R2,R3,R4 routingml;
 |              Next.js Frontend                    |
 |  Dashboard · Map · Order Panel · Risk Badges     |
 +----------------------+---------------------------+
-                       | REST / Phoenix Channels (WebSocket)
+                         | REST / WebSocket (Socket.IO)
 +----------------------v---------------------------+
-|           Phoenix Backend (Elixir)               |
+              |          Fastify Backend (Node.js)               |
 |                                                  |
 |  /orders   /geocode   /simulate                  |
 |  /predict  /route     /track                     |
@@ -282,7 +282,7 @@ class R1,R2,R3,R4 routingml;
 +----v--------------+   |   +------------v-----------+
 | Route Engine      |   |   |   ML Inference         |
 | Dijkstra / A*     |   |   |   Python Sidecar       |
-| (Elixir)          |   |   |   XGBoost (.pkl)       |
+              | (Node.js)         |   |   |   XGBoost (.pkl)       |
 +-------------------+   |   +------------------------+
                         |
          +--------------v--------------+
@@ -296,7 +296,7 @@ class R1,R2,R3,R4 routingml;
          +-----------------------------+
 ```
 
-> **Inter-service communication:** The Phoenix backend calls the Routing ML Microservice over HTTP/JSON. The microservice runs as an independent Python process, accepting route optimization requests and returning optimized sequences with confidence scores. The existing Elixir-based Dijkstra/A* engine handles lightweight re-routing, while the ML microservice handles batch route planning with learned driver behavior models.
+> **Inter-service communication:** The Fastify backend calls the Routing ML Microservice over HTTP/JSON. The microservice runs as an independent Python process, accepting route optimization requests and returning optimized sequences with confidence scores. The existing Node.js-based Dijkstra/A* engine handles lightweight re-routing, while the ML microservice handles batch route planning with learned driver behavior models.
 
 ---
 
@@ -361,7 +361,7 @@ class R1,R2,R3,R4 routingml;
 | **Simulation Evaluator** | Evaluates candidate routes by simulating execution — estimates total time, risk exposure, and delivery success probability. Ranks route alternatives by composite score. |
 | **Feedback Integration** | Completed delivery sequences feed back into the driver behavior model, enabling continuous learning and route quality improvement over time. |
 
-> **Integration strategy:** From the AWS repo, we extract the inference logic (route generation) and discard SageMaker deployment scripts, training infrastructure, and data preprocessing pipelines. The extracted logic is served behind `POST /api/route/optimize` as a FastAPI microservice. The Phoenix backend calls this service over HTTP/JSON for batch route planning at dispatch time. Real-time re-routing (7.6) remains in the lightweight Elixir-based A* engine.
+> **Integration strategy:** From the AWS repo, we extract the inference logic (route generation) and discard SageMaker deployment scripts, training infrastructure, and data preprocessing pipelines. The extracted logic is served behind `POST /api/route/optimize` as a FastAPI microservice. The Fastify backend calls this service over HTTP/JSON for batch route planning at dispatch time. Real-time re-routing (7.6) remains in the lightweight Node.js-based A* engine.
 
 > **Key files from the repo:** `preprocessing.py` (data cleaning), `train.py` (model training — used offline only), `inference_job.py` (route generation — this is what we wrap as an API).
 
@@ -394,16 +394,16 @@ class R1,R2,R3,R4 routingml;
 
 ### 7.9 Observability Layer
 
-**What it does:** Provides end-to-end visibility into system health, request flows, and operational metrics. Combines structured logging, distributed tracing, and metrics collection across the Phoenix backend and Python ML sidecar.
+**What it does:** Provides end-to-end visibility into system health, request flows, and operational metrics. Combines structured logging, distributed tracing, and metrics collection across the Fastify backend and Python ML sidecar.
 
 | | Detail |
 |---|---|
-| Structured Logging | Elixir `Logger` with JSON output; correlation IDs propagated across services |
-| Distributed Tracing | OpenTelemetry traces span Phoenix request handling → ML sidecar inference → route computation |
-| Metrics | `:telemetry`-based metrics exported to Prometheus — request latency, ML inference time, route computation duration, delivery outcomes |
-| Dashboards | Grafana boards for operational monitoring; Phoenix LiveDashboard for dev-time introspection (processes, ETS tables, socket connections) |
+| Structured Logging | Pino logger with JSON output; correlation IDs propagated across services |
+| Distributed Tracing | OpenTelemetry traces span Fastify request handling → ML sidecar inference → route computation |
+| Metrics | Fastify instrumentation + custom metrics exported to Prometheus — request latency, ML inference time, route computation duration, delivery outcomes |
+| Dashboards | Grafana boards for operational monitoring; service health dashboard for API workers, Redis channels, and socket connections |
 | Alerting | Prometheus alerting rules for: ML inference latency > 500ms, route computation > 3s, error rate > 5% |
-| Health Checks | `/api/health` endpoint reporting Phoenix, ML sidecar, and database connectivity status |
+| Health Checks | `/api/health` endpoint reporting Fastify API, ML sidecar, Redis, and database connectivity status |
 
 ---
 
@@ -424,7 +424,7 @@ class R1,R2,R3,R4 routingml;
 |---|---|
 | Live Driver Tracking | Simulated driver icon moves along route on the map in real time |
 | Dynamic Re-routing | Route recalculates automatically on trigger events |
-| Event Streaming | Phoenix Channels (WebSocket) delivers position updates every 5 seconds |
+| Event Streaming | Socket.IO (WebSocket) delivers position updates every 5 seconds |
 | Re-route Notification | Toast alert surfaces when a route is modified |
 
 ### Business Features
@@ -475,7 +475,7 @@ class R1,R2,R3,R4 routingml;
     → High-risk stop / simulated failure → route recalculated
         |
         v
-[9] Updated route pushed to frontend via Phoenix Channels
+[9] Updated route pushed to frontend via Socket.IO channel
     → Notification surfaced, polyline updated
         |
         v
@@ -689,7 +689,7 @@ DeliveryEvent {
 - **Dataset:** 5,000 synthetic rows generated with realistic correlations (evening + residential + rain → higher P(failure))
 - **Split:** 80% train / 20% test
 - **Evaluation metric:** AUC-ROC (target >= 0.75), F1-score on High Risk class
-- **Serialization:** `model.pkl` served via a Python ML sidecar service, called from Phoenix over HTTP
+- **Serialization:** `model.pkl` served via a Python ML sidecar service, called from Fastify over HTTP
 - **Inference latency target:** < 200ms per delivery
 
 ### Risk Tier Mapping
@@ -708,18 +708,18 @@ failure_probability >= 0.65             →  HIGH   (red)
 |---|---|---|
 | Frontend | Next.js 14 + Tailwind CSS | Fast build, SSR-ready, component ecosystem |
 | Map | Leaflet.js (MVP) / Mapbox GL JS (v2) | Leaflet is zero-config; Mapbox for polish |
-| Backend | Phoenix (Elixir) | Fault-tolerant, native WebSocket support via Channels, lightweight processes for driver simulation |
-| Route Engine | Custom Dijkstra / A* (Elixir) | Full control, leverages BEAM concurrency |
-| Routing ML Microservice | Python (FastAPI) wrapping [AWS Amazon Routing Challenge Solution](https://github.com/aws-samples/amazon-sagemaker-amazon-routing-challenge-sol) | Core route-generation logic extracted from AWS research repo (offline ML pipeline). We strip SageMaker/training infrastructure and serve only the inference path as an API. Phoenix backend calls `POST /api/route/optimize` over HTTP/JSON |
+| Backend | Fastify (Node.js) | High-performance HTTP server, plugin-based architecture, and first-class TypeScript support |
+| Route Engine | Custom Dijkstra / A* (Node.js) | Full control with worker-thread concurrency for route simulation and re-optimization |
+| Routing ML Microservice | Python (FastAPI) wrapping [AWS Amazon Routing Challenge Solution](https://github.com/aws-samples/amazon-sagemaker-amazon-routing-challenge-sol) | Core route-generation logic extracted from AWS research repo (offline ML pipeline). We strip SageMaker/training infrastructure and serve only the inference path as an API. Fastify backend calls `POST /api/route/optimize` over HTTP/JSON |
 | Route Optimization Solver | Google OR-Tools (via AWS Routing Challenge repo) | TSP solver used within the routing pipeline for intra-zone stop sequencing; part of the hybrid ML + optimization approach |
 | ML — Route Sequencing | Markov Model + Rollout Algorithm (from AWS Routing Challenge repo) | Driver behavior modeling via Markov model learns real driver patterns; rollout algorithm generates candidate sequences via policy search. Replaces generic scikit-learn approach with research-grade pipeline |
-| ML — Failure Prediction | Python sidecar (scikit-learn / XGBoost + joblib) | Lightweight, serializable, fast inference; called from Phoenix over HTTP |
-| Real-Time | Phoenix Channels + Phoenix PubSub | Native WebSocket transport; ETS-backed PubSub for driver position events |
+| ML — Failure Prediction | Python sidecar (scikit-learn / XGBoost + joblib) | Lightweight, serializable, fast inference; called from Fastify over HTTP |
+| Real-Time | Socket.IO + Redis Pub/Sub | WebSocket transport with horizontal scaling for driver position events |
 | Geocoding | OpenStreetMap Nominatim | Free, no API key, sufficient for demo |
-| State (MVP) | ETS / Agent (in-memory Elixir) | No DB required initially; leverages BEAM's built-in state primitives |
-| State (v2) | PostgreSQL + Ecto | Production data persistence with Elixir-native ORM |
-| Observability | OpenTelemetry + Prometheus + Grafana | Distributed tracing, metrics, and dashboards; Phoenix LiveDashboard for dev |
-| Deployment | Vercel (frontend) + Fly.io / Railway (backend) | Fast CI/CD; Fly.io optimized for BEAM apps |
+| State (MVP) | In-memory cache (Node.js Map/LRU) | No DB required initially; keeps MVP iteration fast and simple |
+| State (v2) | PostgreSQL + Prisma ORM | Production data persistence with TypeScript-first ORM |
+| Observability | OpenTelemetry + Prometheus + Grafana | Distributed tracing, metrics, and dashboards for Fastify + ML services |
+| Deployment | Vercel (frontend) + Railway / Render (backend) | Fast CI/CD and simple containerized deployment for Node.js services |
 
 ---
 
@@ -745,7 +745,7 @@ failure_probability >= 0.65             →  HIGH   (red)
 
 | Metric | Description | Target |
 |---|---|---|
-| Inference Latency | ML prediction per order (Phoenix → sidecar round-trip) | < 200ms |
+| Inference Latency | ML prediction per order (Fastify → sidecar round-trip) | < 200ms |
 | Route Computation Time | Optimization for 5 orders, 2 drivers | < 1 second |
 | Map Load Time | Initial dashboard render | < 3 seconds |
 
@@ -755,7 +755,7 @@ failure_probability >= 0.65             →  HIGH   (red)
 |---|---|---|
 | Trace Coverage | % of requests with end-to-end distributed trace | 100% |
 | Log Correlation | % of log entries with request correlation ID | 100% |
-| Dashboard Uptime | Grafana/LiveDashboard availability | >= 99% |
+| Dashboard Uptime | Grafana/operations dashboard availability | >= 99% |
 | Alert Latency | Time from anomaly to alert firing | < 30 seconds |
 
 ---
@@ -768,9 +768,9 @@ failure_probability >= 0.65             →  HIGH   (red)
 - Route optimization via Dijkstra/A*
 - ML failure prediction (XGBoost trained on synthetic data)
 - Map dashboard with pins, polylines, and risk badges
-- Simulated driver movement on map (position updated every 5s via Phoenix Channels)
+- Simulated driver movement on map (position updated every 5s via Socket.IO)
 - Re-route trigger on High Risk flag
-- Phoenix LiveDashboard for dev-time observability
+- Service health dashboard for dev-time observability
 - Structured logging with correlation IDs
 
 ### What Is Simulated / Mocked
@@ -785,7 +785,7 @@ failure_probability >= 0.65             →  HIGH   (red)
 - Real GPS integration
 - Live traffic data
 - Multi-tenant auth and role management
-- Production database (PostgreSQL + Ecto)
+- Production database (PostgreSQL + Prisma ORM)
 - Customer-facing delivery tracking link
 - Mobile driver app
 - Full Prometheus + Grafana observability stack
@@ -818,7 +818,7 @@ The Advanced Routing Engine (7.5.1) is built on the core logic from the [AWS Ama
 | **Research-focused** | The original challenge optimized for route quality on historical data. It was not designed for production deployment with SLA requirements, high availability, or horizontal scaling. |
 | **Data dependency** | Model quality depends on historical driver sequence data. In cold-start scenarios (new city, new driver pool), the model falls back to pure heuristic optimization without learned behavior priors. |
 
-> **Implication:** SynapseRoute uses this engine for **batch route planning at dispatch time** (where latency tolerance is higher), not for real-time re-routing. The lightweight Elixir-based Dijkstra/A* engine handles all real-time re-optimization (7.6).
+> **Implication:** SynapseRoute uses this engine for **batch route planning at dispatch time** (where latency tolerance is higher), not for real-time re-routing. The lightweight Node.js-based Dijkstra/A* engine handles all real-time re-optimization (7.6).
 
 ---
 
@@ -828,9 +828,9 @@ SynapseRoute extends the base research model with production-grade capabilities:
 
 | Enhancement | Detail |
 |---|---|
-| **Real-time re-routing** | The Elixir-based re-optimization engine (7.6) handles dynamic route changes during execution. When a trigger fires, the remaining route is recalculated in < 3 seconds using the lightweight A* engine — no dependency on the ML microservice. |
+| **Real-time re-routing** | The Node.js-based re-optimization engine (7.6) handles dynamic route changes during execution. When a trigger fires, the remaining route is recalculated in < 3 seconds using the lightweight A* engine — no dependency on the ML microservice. |
 | **Failure prediction integration** | Route optimization is risk-aware. The failure predictor (7.4) scores each stop before routing, and the optimizer uses risk tiers to adjust stop sequencing — high-risk stops are scheduled earlier in the route when driver capacity is highest, or flagged for proactive intervention. |
-| **API-based deployment** | The research model is wrapped in a FastAPI microservice with versioned endpoints (`POST /api/route/optimize`). This enables independent scaling, A/B testing of routing strategies, and clean separation from the core Phoenix backend. |
+| **API-based deployment** | The research model is wrapped in a FastAPI microservice with versioned endpoints (`POST /api/route/optimize`). This enables independent scaling, A/B testing of routing strategies, and clean separation from the core Fastify backend. |
 | **Feedback loop for continuous learning** | Completed delivery sequences (actual stop order, time per stop, success/failure outcomes) are fed back into the driver behavior model. This creates a continuous learning cycle: routes improve as the system accumulates operational data. The feedback pipeline runs asynchronously — it does not block active routing. |
 | **Confidence scoring** | Each optimized route includes a confidence score (0–1) indicating how closely the ML-predicted sequence aligns with the heuristic-optimized result. Low-confidence routes are flagged for dispatcher review before dispatch. |
 
@@ -846,7 +846,7 @@ SynapseRoute extends the base research model with production-grade capabilities:
 | Route engine too slow at scale | Low | High | Pre-compute on order placement; cache result; limit to 10 stops/driver for demo |
 | Map library integration delay | Low | Medium | Default to Leaflet.js; switch to Mapbox only if time allows |
 | Real-time updates causing UI jank | Medium | Low | Throttle map re-renders; only update changed pins, not full redraw |
-| Python ML sidecar latency | Medium | Medium | Keep sidecar co-located with Phoenix; connection pooling via Finch; cache predictions for identical feature vectors |
+| Python ML sidecar latency | Medium | Medium | Keep sidecar co-located with Fastify; connection pooling via Undici; cache predictions for identical feature vectors |
 | Demo environment has no internet | Low | High | Bundle fixture geocoordinates for fallback (Chennai sample dataset) |
 
 ---
