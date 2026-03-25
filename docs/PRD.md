@@ -115,39 +115,120 @@ This is not a static dispatcher. It is a continuously reasoning co-pilot for las
 ---
 
 ## 6. System Architecture
+### Layred Architecture
+```mermaid
+flowchart TB
 
-### Layered Architecture
+%% ================= CLIENT =================
+subgraph Client
+    A1[User Dashboard]
+    A2[Driver App]
+end
 
-```
-+---------------------------------------------------------------------+
-|  INPUT LAYER                                                        |
-|  Order form · Address geocoding · Driver assignment · Time context  |
-+----------------------------------+----------------------------------+
-                                   |
-+----------------------------------v----------------------------------+
-|  PROCESSING LAYER                                                   |
-|  Address normalization · Coordinate resolution · Zone tagging       |
-+----------------------------------+----------------------------------+
-                                   |
-+----------------------------------v----------------------------------+
-|  INTELLIGENCE LAYER                                                 |
-|  ML Failure Predictor · ETA Estimator · Risk Tier Classifier        |
-+----------------------------------+----------------------------------+
-                                   |
-+----------------------------------v----------------------------------+
-|  DECISION LAYER                                                     |
-|  Route Optimizer (Dijkstra/A*) · Load Balancer · Re-route Engine    |
-+----------------------------------+----------------------------------+
-                                   |
-+----------------------------------v----------------------------------+
-|  EXECUTION LAYER                                                    |
-|  Route dispatch · Driver position simulation · Status updates       |
-+----------------------------------+----------------------------------+
-                                   |
-+----------------------------------v----------------------------------+
-|  FEEDBACK LAYER                                                     |
-|  Delivery outcome logging · Zone failure rate update · Replay log   |
-+---------------------------------------------------------------------+
+%% ================= API =================
+subgraph API
+    B1[API Gateway]
+    B2[Auth Middleware]
+end
+
+%% ================= CORE =================
+subgraph Core
+    C1[Order Service]
+    C2[Address Service]
+    C3[Decision Engine]
+    C4[Route Optimization]
+    C5[Notification Service]
+end
+
+%% ================= ML =================
+subgraph ML
+    D1[Simulation Engine]
+    D2[Failure Prediction]
+    D3[ETA Prediction]
+    D4[Traffic Prediction]
+end
+
+%% ================= REALTIME =================
+subgraph Realtime
+    E1[Phoenix Server]
+    E2[Driver Manager]
+    E3[Driver Processes]
+    E4[PubSub]
+end
+
+%% ================= EVENTS =================
+subgraph Events
+    F1[Message Queue]
+end
+
+%% ================= DATA =================
+subgraph Data
+    G1[(PostgreSQL)]
+    G2[(Redis)]
+    G3[(ML Data)]
+end
+
+%% ================= FLOW =================
+A1 --> B1
+B1 --> B2
+B2 --> C1
+
+A2 --> E1
+
+C1 --> C2
+C2 --> D1
+
+D1 --> D2
+D1 --> D3
+D1 --> D4
+
+D2 --> C3
+D3 --> C3
+D4 --> C3
+
+C3 --> C4
+C3 --> C5
+
+C4 --> F1
+C5 --> F1
+
+F1 --> E1
+
+E1 --> E2
+E2 --> E3
+E3 --> E4
+
+E4 --> A1
+
+E3 --> G2
+E3 --> G1
+
+G1 --> D1
+G3 --> D2
+
+E3 --> C3
+
+C1 --> G1
+C4 --> G1
+D1 --> G3
+
+%% ================= STYLING =================
+
+classDef client fill:#1e3a8a,stroke:#60a5fa,color:#ffffff,stroke-width:2px;
+classDef api fill:#6b21a8,stroke:#c084fc,color:#ffffff,stroke-width:2px;
+classDef core fill:#065f46,stroke:#34d399,color:#ffffff,stroke-width:2px;
+classDef ml fill:#9a3412,stroke:#fb923c,color:#ffffff,stroke-width:2px;
+classDef realtime fill:#9f1239,stroke:#f472b6,color:#ffffff,stroke-width:2px;
+classDef events fill:#92400e,stroke:#facc15,color:#ffffff,stroke-width:2px;
+classDef data fill:#374151,stroke:#9ca3af,color:#ffffff,stroke-width:2px;
+
+class A1,A2 client;
+class B1,B2 api;
+class C1,C2,C3,C4,C5 core;
+class D1,D2,D3,D4 ml;
+class E1,E2,E3,E4 realtime;
+class F1 events;
+class G1,G2,G3 data;
 ```
 
 ### Component Interaction
