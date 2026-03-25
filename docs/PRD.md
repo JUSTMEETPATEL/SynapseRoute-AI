@@ -548,7 +548,7 @@ failure_probability >= 0.65             →  HIGH   (red)
 |---|---|---|
 | Frontend | Next.js 14 + Tailwind CSS | Fast build, SSR-ready, component ecosystem |
 | Map | Leaflet.js (MVP) / Mapbox GL JS (v2) | Leaflet is zero-config; Mapbox for polish |
-| Backend | FastAPI (Python 3.11) | Async, fast, native Pydantic validation |
+| Backend | Pheonix (Elixir) | Async, fast, native Pydantic validation |
 | Route Engine | Custom Dijkstra / A* (pure Python) | Full control, no external dependency |
 | ML Models | scikit-learn / XGBoost + joblib | Lightweight, serializable, fast inference |
 | Real-Time | Redis pub/sub (or in-memory mock) | Driver position events; mock as fallback |
