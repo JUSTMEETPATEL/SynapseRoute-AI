@@ -1,7 +1,7 @@
 # SynapseRoute AI — Product Requirements Document
 
 **Version:** 1.0  
-**Status:** MVP — Hackathon Build  
+**Status:** Planning 
 **Last Updated:** 2026-03-25  
 **Author:** SynapseRoute AI Team
 
