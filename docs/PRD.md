@@ -716,7 +716,7 @@ failure_probability >= 0.65             →  HIGH   (red)
 | ML — Failure Prediction | Python sidecar (scikit-learn / XGBoost + joblib) | Lightweight, serializable, fast inference; called from Phoenix over HTTP |
 | Real-Time | Phoenix Channels + Phoenix PubSub | Native WebSocket transport; ETS-backed PubSub for driver position events |
 | Geocoding | OpenStreetMap Nominatim | Free, no API key, sufficient for demo |
-| State (MVP) | ETS / Agent (in-memory Elixir) | No DB required for hackathon scope; leverages BEAM's built-in state primitives |
+| State (MVP) | ETS / Agent (in-memory Elixir) | No DB required initially; leverages BEAM's built-in state primitives |
 | State (v2) | PostgreSQL + Ecto | Production data persistence with Elixir-native ORM |
 | Observability | OpenTelemetry + Prometheus + Grafana | Distributed tracing, metrics, and dashboards; Phoenix LiveDashboard for dev |
 | Deployment | Vercel (frontend) + Fly.io / Railway (backend) | Fast CI/CD; Fly.io optimized for BEAM apps |
