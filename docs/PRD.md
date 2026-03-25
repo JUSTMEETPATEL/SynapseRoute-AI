@@ -351,16 +351,19 @@ class R1,R2,R3,R4 routingml;
 
 ### 7.5.1 Advanced Routing Engine (ML + Optimization Hybrid)
 
-**What it does:** An advanced routing layer inspired by [Amazon's Last Mile Routing Research Challenge](https://amazon-sagemaker-amt.com/). Combines machine learning (driver behavior modeling), heuristic optimization (TSP-based sequencing), and simulation-based evaluation to produce routes that reflect how experienced drivers actually navigate — not just shortest-path theory.
+**What it does:** An advanced routing layer built on the core inference logic from the [AWS Amazon Routing Challenge Solution](https://github.com/aws-samples/amazon-sagemaker-amazon-routing-challenge-sol). The original repo is an offline research pipeline (not a web backend, not real-time, not API-ready). We extract only the route-generation/inference logic, strip SageMaker-specific infrastructure, and wrap it as a FastAPI microservice. The pipeline combines a Markov-based driver behavior model, rollout algorithm (policy search), and OR-Tools TSP solver to produce routes that reflect how experienced drivers actually navigate.
 
 | Component | Detail |
 |---|---|
-| **Driver Behavior Model** | ML model trained on historical delivery sequences to predict likely stop ordering patterns. Captures implicit driver preferences (e.g., avoiding left turns, preferring arterial roads, clustering by neighborhood). |
-| **TSP Heuristic Sequencer** | Solves the Travelling Salesman Problem variant using OR-Tools or custom heuristics (nearest-neighbor initialization + 2-opt/3-opt local search). Uses ML-predicted sequence as a warm start. |
+| **Driver Behavior Model (Markov Model)** | Learns real driver sequencing patterns from historical delivery data. Captures implicit preferences (e.g., avoiding left turns, clustering by neighborhood, preferring arterial roads). From repo: core logic in training/inference scripts. |
+| **Rollout Algorithm (Policy Search)** | Generates candidate route sequences by simulating forward from the current state using the learned Markov model as a policy. Produces high-quality initial sequences that respect learned driver behavior. |
+| **TSP Solver (OR-Tools)** | Optimizes stop ordering within zones using Google OR-Tools. Refines the rollout-generated sequence with constraint programming for intra-zone optimization. |
 | **Simulation Evaluator** | Evaluates candidate routes by simulating execution — estimates total time, risk exposure, and delivery success probability. Ranks route alternatives by composite score. |
 | **Feedback Integration** | Completed delivery sequences feed back into the driver behavior model, enabling continuous learning and route quality improvement over time. |
 
-> **Relationship to 7.5:** The Advanced Routing Engine extends the base Dijkstra/A* engine. For real-time re-routing (7.6), the lightweight Elixir-based engine handles fast recalculations. For batch route planning at dispatch time, the ML-hybrid engine produces higher-quality initial routes via the Python/FastAPI microservice.
+> **Integration strategy:** From the AWS repo, we extract the inference logic (route generation) and discard SageMaker deployment scripts, training infrastructure, and data preprocessing pipelines. The extracted logic is served behind `POST /api/route/optimize` as a FastAPI microservice. The Phoenix backend calls this service over HTTP/JSON for batch route planning at dispatch time. Real-time re-routing (7.6) remains in the lightweight Elixir-based A* engine.
+
+> **Key files from the repo:** `preprocessing.py` (data cleaning), `train.py` (model training — used offline only), `inference_job.py` (route generation — this is what we wrap as an API).
 
 ### 7.6 Re-optimization Engine
 
@@ -707,9 +710,9 @@ failure_probability >= 0.65             →  HIGH   (red)
 | Map | Leaflet.js (MVP) / Mapbox GL JS (v2) | Leaflet is zero-config; Mapbox for polish |
 | Backend | Phoenix (Elixir) | Fault-tolerant, native WebSocket support via Channels, lightweight processes for driver simulation |
 | Route Engine | Custom Dijkstra / A* (Elixir) | Full control, leverages BEAM concurrency |
-| Routing ML Microservice | Python (FastAPI) | Dedicated service for ML-based route optimization; communicates with Phoenix backend over HTTP/JSON |
-| Route Optimization Solver | Google OR-Tools / custom heuristics | TSP/VRP solver for stop sequencing; OR-Tools provides production-grade constraint programming with Python bindings |
-| ML — Route Sequencing | scikit-learn / XGBoost | Driver behavior modeling and sequence prediction; trained on historical delivery patterns to generate warm-start solutions |
+| Routing ML Microservice | Python (FastAPI) wrapping [AWS Amazon Routing Challenge Solution](https://github.com/aws-samples/amazon-sagemaker-amazon-routing-challenge-sol) | Core route-generation logic extracted from AWS research repo (offline ML pipeline). We strip SageMaker/training infrastructure and serve only the inference path as an API. Phoenix backend calls `POST /api/route/optimize` over HTTP/JSON |
+| Route Optimization Solver | Google OR-Tools (via AWS Routing Challenge repo) | TSP solver used within the routing pipeline for intra-zone stop sequencing; part of the hybrid ML + optimization approach |
+| ML — Route Sequencing | Markov Model + Rollout Algorithm (from AWS Routing Challenge repo) | Driver behavior modeling via Markov model learns real driver patterns; rollout algorithm generates candidate sequences via policy search. Replaces generic scikit-learn approach with research-grade pipeline |
 | ML — Failure Prediction | Python sidecar (scikit-learn / XGBoost + joblib) | Lightweight, serializable, fast inference; called from Phoenix over HTTP |
 | Real-Time | Phoenix Channels + Phoenix PubSub | Native WebSocket transport; ETS-backed PubSub for driver position events |
 | Geocoding | OpenStreetMap Nominatim | Free, no API key, sufficient for demo |
@@ -806,7 +809,7 @@ failure_probability >= 0.65             →  HIGH   (red)
 
 ## 16.1 Routing Engine — Limitations
 
-The Advanced Routing Engine (7.5.1) is inspired by Amazon's Last Mile Routing Research Challenge. The base research model has inherent constraints that inform how it is integrated into SynapseRoute:
+The Advanced Routing Engine (7.5.1) is built on the core logic from the [AWS Amazon Routing Challenge Solution](https://github.com/aws-samples/amazon-sagemaker-amazon-routing-challenge-sol). The original repo is an offline research pipeline — not a web backend, not real-time, and not API-ready. These inherent constraints inform how it is integrated into SynapseRoute:
 
 | Limitation | Detail |
 |---|---|
