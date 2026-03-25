@@ -636,7 +636,7 @@ failure_probability >= 0.65             →  HIGH   (red)
 | Geocoding | OpenStreetMap Nominatim | Free, no API key, sufficient for demo |
 | State (MVP) | In-memory Python dict | No DB required for hackathon scope |
 | State (v2) | PostgreSQL + SQLAlchemy | Production data persistence |
-| Deployment | Vercel (frontend) + Railway/Render (backend) | Fast CI/CD for hackathon |
+| Deployment | Vercel (frontend) + Railway/Render (backend) | Fast CI/CD |
 
 ---
 
