@@ -11,17 +11,18 @@ SynapseRoute AI is a predictive, adaptive last-mile delivery intelligence platfo
 ## Planned Tech Stack
 
 - **Frontend:** Next.js 14 + Tailwind CSS, Leaflet.js for maps
-- **Backend:** FastAPI (Python 3.11)
-- **Route Engine:** Custom Dijkstra/A* (pure Python)
-- **ML:** scikit-learn / XGBoost, serialized with joblib
-- **Real-Time:** Redis pub/sub (or in-memory mock for MVP)
+- **Backend:** Phoenix (Elixir)
+- **Route Engine:** Custom Dijkstra/A* (Elixir)
+- **ML:** Python sidecar service (scikit-learn / XGBoost, serialized with joblib), called from Phoenix over HTTP
+- **Real-Time:** Phoenix Channels + Phoenix PubSub
 - **Geocoding:** OpenStreetMap Nominatim
-- **State (MVP):** In-memory Python dicts; PostgreSQL + SQLAlchemy planned for v2
-- **Deployment:** Vercel (frontend) + Railway/Render (backend)
+- **State (MVP):** ETS / Agent (in-memory Elixir); PostgreSQL + Ecto planned for v2
+- **Observability:** OpenTelemetry + Prometheus + Grafana; Phoenix LiveDashboard for dev
+- **Deployment:** Vercel (frontend) + Fly.io / Railway (backend)
 
 ## Architecture
 
-Six-layer design (Input → Processing → Intelligence → Decision → Execution → Feedback). The frontend communicates with the FastAPI backend via REST and WebSocket. The XGBoost model (`.pkl`) is loaded at FastAPI startup.
+Six-layer design (Input → Processing → Intelligence → Decision → Execution → Feedback). The frontend communicates with the Phoenix backend via REST and Phoenix Channels (WebSocket). ML inference runs in a Python sidecar service; Phoenix calls it over HTTP. Observability is built on `:telemetry`, OpenTelemetry, and Phoenix LiveDashboard.
 
 ### Core Modules
 

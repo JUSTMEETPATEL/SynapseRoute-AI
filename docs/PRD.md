@@ -115,7 +115,7 @@ This is not a static dispatcher. It is a continuously reasoning co-pilot for las
 ---
 
 ## 6. System Architecture
-### Layred Architecture
+### Layered Architecture
 ```mermaid
 flowchart TB
 
@@ -168,6 +168,14 @@ subgraph Data
     G3[(ML Data)]
 end
 
+%% ================= OBSERVABILITY =================
+subgraph Observability
+    H1[OpenTelemetry Collector]
+    H2[Prometheus]
+    H3[Grafana]
+    H4[Phoenix LiveDashboard]
+end
+
 %% ================= FLOW =================
 A1 --> B1
 B1 --> B2
@@ -212,6 +220,12 @@ C1 --> G1
 C4 --> G1
 D1 --> G3
 
+B1 --> H1
+E1 --> H1
+H1 --> H2
+H2 --> H3
+E1 --> H4
+
 %% ================= STYLING =================
 
 classDef client fill:#1e3a8a,stroke:#60a5fa,color:#ffffff,stroke-width:2px;
@@ -221,6 +235,7 @@ classDef ml fill:#9a3412,stroke:#fb923c,color:#ffffff,stroke-width:2px;
 classDef realtime fill:#9f1239,stroke:#f472b6,color:#ffffff,stroke-width:2px;
 classDef events fill:#92400e,stroke:#facc15,color:#ffffff,stroke-width:2px;
 classDef data fill:#374151,stroke:#9ca3af,color:#ffffff,stroke-width:2px;
+classDef observability fill:#1e3a5f,stroke:#38bdf8,color:#ffffff,stroke-width:2px;
 
 class A1,A2 client;
 class B1,B2 api;
@@ -229,6 +244,7 @@ class D1,D2,D3,D4 ml;
 class E1,E2,E3,E4 realtime;
 class F1 events;
 class G1,G2,G3 data;
+class H1,H2,H3,H4 observability;
 ```
 
 ### Component Interaction
@@ -238,9 +254,9 @@ class G1,G2,G3 data;
 |              Next.js Frontend                    |
 |  Dashboard · Map · Order Panel · Risk Badges     |
 +----------------------+---------------------------+
-                       | REST / WebSocket
+                       | REST / Phoenix Channels (WebSocket)
 +----------------------v---------------------------+
-|              FastAPI Backend                     |
+|           Phoenix Backend (Elixir)               |
 |                                                  |
 |  /orders   /geocode   /simulate                  |
 |  /predict  /route     /track                     |
@@ -248,13 +264,9 @@ class G1,G2,G3 data;
      |                                  |
 +----v--------------+        +----------v----------+
 | Route Engine      |        |   ML Inference      |
-| Dijkstra / A*     |        |   XGBoost (.pkl)    |
-+----+--------------+        +---------------------+
-     |
-+----v--------------+
-|  Redis            |  <- Driver position pub/sub events
-|  (or mock)        |
-+-------------------+
+| Dijkstra / A*     |        |   Python Sidecar    |
+| (Elixir)          |        |   XGBoost (.pkl)    |
++-------------------+        +---------------------+
 ```
 
 ---
@@ -333,6 +345,19 @@ class G1,G2,G3 data;
 | Input | Delivery status log, risk scores, route durations |
 | Output | Summary stats: total deliveries, high-risk count, avg ETA accuracy |
 
+### 7.9 Observability Layer
+
+**What it does:** Provides end-to-end visibility into system health, request flows, and operational metrics. Combines structured logging, distributed tracing, and metrics collection across the Phoenix backend and Python ML sidecar.
+
+| | Detail |
+|---|---|
+| Structured Logging | Elixir `Logger` with JSON output; correlation IDs propagated across services |
+| Distributed Tracing | OpenTelemetry traces span Phoenix request handling → ML sidecar inference → route computation |
+| Metrics | `:telemetry`-based metrics exported to Prometheus — request latency, ML inference time, route computation duration, delivery outcomes |
+| Dashboards | Grafana boards for operational monitoring; Phoenix LiveDashboard for dev-time introspection (processes, ETS tables, socket connections) |
+| Alerting | Prometheus alerting rules for: ML inference latency > 500ms, route computation > 3s, error rate > 5% |
+| Health Checks | `/api/health` endpoint reporting Phoenix, ML sidecar, and database connectivity status |
+
 ---
 
 ## 8. Key Features
@@ -352,7 +377,7 @@ class G1,G2,G3 data;
 |---|---|
 | Live Driver Tracking | Simulated driver icon moves along route on the map in real time |
 | Dynamic Re-routing | Route recalculates automatically on trigger events |
-| Event Streaming | Redis pub/sub (or mock polling) delivers position updates every 5 seconds |
+| Event Streaming | Phoenix Channels (WebSocket) delivers position updates every 5 seconds |
 | Re-route Notification | Toast alert surfaces when a route is modified |
 
 ### Business Features
@@ -397,7 +422,7 @@ class G1,G2,G3 data;
     → High-risk stop / simulated failure → route recalculated
         |
         v
-[8] Updated route pushed to frontend via WebSocket/polling
+[8] Updated route pushed to frontend via Phoenix Channels
     → Notification surfaced, polyline updated
         |
         v
@@ -610,7 +635,7 @@ DeliveryEvent {
 - **Dataset:** 5,000 synthetic rows generated with realistic correlations (evening + residential + rain → higher P(failure))
 - **Split:** 80% train / 20% test
 - **Evaluation metric:** AUC-ROC (target >= 0.75), F1-score on High Risk class
-- **Serialization:** `model.pkl` loaded at FastAPI startup via `joblib`
+- **Serialization:** `model.pkl` served via a Python ML sidecar service, called from Phoenix over HTTP
 - **Inference latency target:** < 200ms per delivery
 
 ### Risk Tier Mapping
@@ -629,14 +654,15 @@ failure_probability >= 0.65             →  HIGH   (red)
 |---|---|---|
 | Frontend | Next.js 14 + Tailwind CSS | Fast build, SSR-ready, component ecosystem |
 | Map | Leaflet.js (MVP) / Mapbox GL JS (v2) | Leaflet is zero-config; Mapbox for polish |
-| Backend | Pheonix (Elixir) | Async, fast, native Pydantic validation |
-| Route Engine | Custom Dijkstra / A* (pure Python) | Full control, no external dependency |
-| ML Models | scikit-learn / XGBoost + joblib | Lightweight, serializable, fast inference |
-| Real-Time | Redis pub/sub (or in-memory mock) | Driver position events; mock as fallback |
+| Backend | Phoenix (Elixir) | Fault-tolerant, native WebSocket support via Channels, lightweight processes for driver simulation |
+| Route Engine | Custom Dijkstra / A* (Elixir) | Full control, leverages BEAM concurrency |
+| ML Models | Python sidecar (scikit-learn / XGBoost + joblib) | Lightweight, serializable, fast inference; called from Phoenix over HTTP |
+| Real-Time | Phoenix Channels + Phoenix PubSub | Native WebSocket transport; ETS-backed PubSub for driver position events |
 | Geocoding | OpenStreetMap Nominatim | Free, no API key, sufficient for demo |
-| State (MVP) | In-memory Python dict | No DB required for hackathon scope |
-| State (v2) | PostgreSQL + SQLAlchemy | Production data persistence |
-| Deployment | Vercel (frontend) + Railway/Render (backend) | Fast CI/CD |
+| State (MVP) | ETS / Agent (in-memory Elixir) | No DB required for hackathon scope; leverages BEAM's built-in state primitives |
+| State (v2) | PostgreSQL + Ecto | Production data persistence with Elixir-native ORM |
+| Observability | OpenTelemetry + Prometheus + Grafana | Distributed tracing, metrics, and dashboards; Phoenix LiveDashboard for dev |
+| Deployment | Vercel (frontend) + Fly.io / Railway (backend) | Fast CI/CD; Fly.io optimized for BEAM apps |
 
 ---
 
@@ -662,9 +688,18 @@ failure_probability >= 0.65             →  HIGH   (red)
 
 | Metric | Description | Target |
 |---|---|---|
-| Inference Latency | ML prediction per order | < 200ms |
+| Inference Latency | ML prediction per order (Phoenix → sidecar round-trip) | < 200ms |
 | Route Computation Time | Optimization for 5 orders, 2 drivers | < 1 second |
 | Map Load Time | Initial dashboard render | < 3 seconds |
+
+### Observability
+
+| Metric | Description | Target |
+|---|---|---|
+| Trace Coverage | % of requests with end-to-end distributed trace | 100% |
+| Log Correlation | % of log entries with request correlation ID | 100% |
+| Dashboard Uptime | Grafana/LiveDashboard availability | >= 99% |
+| Alert Latency | Time from anomaly to alert firing | < 30 seconds |
 
 ---
 
@@ -676,8 +711,10 @@ failure_probability >= 0.65             →  HIGH   (red)
 - Route optimization via Dijkstra/A*
 - ML failure prediction (XGBoost trained on synthetic data)
 - Map dashboard with pins, polylines, and risk badges
-- Simulated driver movement on map (position updated every 5s)
+- Simulated driver movement on map (position updated every 5s via Phoenix Channels)
 - Re-route trigger on High Risk flag
+- Phoenix LiveDashboard for dev-time observability
+- Structured logging with correlation IDs
 
 ### What Is Simulated / Mocked
 
@@ -691,9 +728,11 @@ failure_probability >= 0.65             →  HIGH   (red)
 - Real GPS integration
 - Live traffic data
 - Multi-tenant auth and role management
-- Production database (PostgreSQL)
+- Production database (PostgreSQL + Ecto)
 - Customer-facing delivery tracking link
 - Mobile driver app
+- Full Prometheus + Grafana observability stack
+- OpenTelemetry distributed tracing across services
 
 ---
 
@@ -721,6 +760,7 @@ failure_probability >= 0.65             →  HIGH   (red)
 | Route engine too slow at scale | Low | High | Pre-compute on order placement; cache result; limit to 10 stops/driver for demo |
 | Map library integration delay | Low | Medium | Default to Leaflet.js; switch to Mapbox only if time allows |
 | Real-time updates causing UI jank | Medium | Low | Throttle map re-renders; only update changed pins, not full redraw |
+| Python ML sidecar latency | Medium | Medium | Keep sidecar co-located with Phoenix; connection pooling via Finch; cache predictions for identical feature vectors |
 | Demo environment has no internet | Low | High | Bundle fixture geocoordinates for fallback (Chennai sample dataset) |
 
 ---
