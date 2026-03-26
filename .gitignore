@@ -1,0 +1,99 @@
+# Environment files
+.env
+.env.local
+.env.development
+.env.production
+.env.*.local
+
+# Dependencies
+node_modules/
+_build/
+deps/
+*.egg-info/
+dist/
+build/
+.elixir_ls/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
+*.cover
+.coverage
+htmlcov/
+
+# Next.js
+.next/
+out/
+*.tsbuildinfo
+
+# Phoenix
+/_build/
+/cover/
+/deps/
+/doc/
+erl_crash.dump
+*.ez
+synapseroute-*.tar
+priv/static/
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Models
+*.pkl
+*.joblib
+*.h5
+*.pt
+*.pth
+models/
+
+# Docker
+.docker/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Test coverage
+coverage/
+
+# Certificates
+*.pem
+*.key
+*.crt
+ssl/
+
+# Secrets
+secrets/
+*.secret
