@@ -296,7 +296,7 @@ class R1,R2,R3,R4 routingml;
          +-----------------------------+
 ```
 
-> **Inter-service communication:** The Fastify backend calls the Routing ML Microservice over HTTP/JSON. The microservice runs as an independent Python process, accepting route optimization requests and returning optimized sequences with confidence scores. The existing Node.js-based Dijkstra/A* engine handles lightweight re-routing, while the ML microservice handles batch route planning with learned driver behavior models.
+> **Inter-service communication:** The Fastify backend calls the Routing ML Microservice over gRPC (Protobuf). The microservice runs as an independent Python process, accepting route optimization requests and returning optimized sequences with confidence scores. The existing Node.js-based Dijkstra/A* engine handles lightweight re-routing, while the ML microservice handles batch route planning with learned driver behavior models.
 
 ---
 
@@ -361,7 +361,7 @@ class R1,R2,R3,R4 routingml;
 | **Simulation Evaluator** | Evaluates candidate routes by simulating execution — estimates total time, risk exposure, and delivery success probability. Ranks route alternatives by composite score. |
 | **Feedback Integration** | Completed delivery sequences feed back into the driver behavior model, enabling continuous learning and route quality improvement over time. |
 
-> **Integration strategy:** From the AWS repo, we extract the inference logic (route generation) and discard SageMaker deployment scripts, training infrastructure, and data preprocessing pipelines. The extracted logic is served behind `POST /api/route/optimize` as a FastAPI microservice. The Fastify backend calls this service over HTTP/JSON for batch route planning at dispatch time. Real-time re-routing (7.6) remains in the lightweight Node.js-based A* engine.
+> **Integration strategy:** From the AWS repo, we extract the inference logic (route generation) and discard SageMaker deployment scripts, training infrastructure, and data preprocessing pipelines. The extracted logic is served behind a versioned gRPC service. The Fastify backend calls this service over gRPC for batch route planning at dispatch time. Real-time re-routing (7.6) remains in the lightweight Node.js-based A* engine.
 
 > **Key files from the repo:** `preprocessing.py` (data cleaning), `train.py` (model training — used offline only), `inference_job.py` (route generation — this is what we wrap as an API).
 
@@ -689,7 +689,7 @@ DeliveryEvent {
 - **Dataset:** 5,000 synthetic rows generated with realistic correlations (evening + residential + rain → higher P(failure))
 - **Split:** 80% train / 20% test
 - **Evaluation metric:** AUC-ROC (target >= 0.75), F1-score on High Risk class
-- **Serialization:** `model.pkl` served via a Python ML sidecar service, called from Fastify over HTTP
+- **Serialization:** `model.pkl` served via a Python ML sidecar service, called from Fastify over gRPC
 - **Inference latency target:** < 200ms per delivery
 
 ### Risk Tier Mapping
@@ -710,10 +710,11 @@ failure_probability >= 0.65             →  HIGH   (red)
 | Map | Leaflet.js (MVP) / Mapbox GL JS (v2) | Leaflet is zero-config; Mapbox for polish |
 | Backend | Fastify (Node.js) | High-performance HTTP server, plugin-based architecture, and first-class TypeScript support |
 | Route Engine | Custom Dijkstra / A* (Node.js) | Full control with worker-thread concurrency for route simulation and re-optimization |
-| Routing ML Microservice | Python (FastAPI) wrapping [AWS Amazon Routing Challenge Solution](https://github.com/aws-samples/amazon-sagemaker-amazon-routing-challenge-sol) | Core route-generation logic extracted from AWS research repo (offline ML pipeline). We strip SageMaker/training infrastructure and serve only the inference path as an API. Fastify backend calls `POST /api/route/optimize` over HTTP/JSON |
+| Routing ML Microservice | Python (FastAPI) wrapping [AWS Amazon Routing Challenge Solution](https://github.com/aws-samples/amazon-sagemaker-amazon-routing-challenge-sol) | Core route-generation logic extracted from AWS research repo (offline ML pipeline). We strip SageMaker/training infrastructure and serve only the inference path as an API. Fastify backend calls the routing service over gRPC (Protobuf) |
 | Route Optimization Solver | Google OR-Tools (via AWS Routing Challenge repo) | TSP solver used within the routing pipeline for intra-zone stop sequencing; part of the hybrid ML + optimization approach |
 | ML — Route Sequencing | Markov Model + Rollout Algorithm (from AWS Routing Challenge repo) | Driver behavior modeling via Markov model learns real driver patterns; rollout algorithm generates candidate sequences via policy search. Replaces generic scikit-learn approach with research-grade pipeline |
-| ML — Failure Prediction | Python sidecar (scikit-learn / XGBoost + joblib) | Lightweight, serializable, fast inference; called from Fastify over HTTP |
+| ML — Failure Prediction | Python sidecar (scikit-learn / XGBoost + joblib) | Lightweight, serializable, fast inference; called from Fastify over gRPC |
+| Inter-service RPC | gRPC + Protobuf | Typed contracts for low-latency communication between core API and ML services |
 | Real-Time | Socket.IO + Redis Pub/Sub | WebSocket transport with horizontal scaling for driver position events |
 | Geocoding | OpenStreetMap Nominatim | Free, no API key, sufficient for demo |
 | State (MVP) | In-memory cache (Node.js Map/LRU) | No DB required initially; keeps MVP iteration fast and simple |
@@ -830,7 +831,7 @@ SynapseRoute extends the base research model with production-grade capabilities:
 |---|---|
 | **Real-time re-routing** | The Node.js-based re-optimization engine (7.6) handles dynamic route changes during execution. When a trigger fires, the remaining route is recalculated in < 3 seconds using the lightweight A* engine — no dependency on the ML microservice. |
 | **Failure prediction integration** | Route optimization is risk-aware. The failure predictor (7.4) scores each stop before routing, and the optimizer uses risk tiers to adjust stop sequencing — high-risk stops are scheduled earlier in the route when driver capacity is highest, or flagged for proactive intervention. |
-| **API-based deployment** | The research model is wrapped in a FastAPI microservice with versioned endpoints (`POST /api/route/optimize`). This enables independent scaling, A/B testing of routing strategies, and clean separation from the core Fastify backend. |
+| **API-based deployment** | The research model is wrapped in a FastAPI microservice with a versioned gRPC service definition. This enables independent scaling, A/B testing of routing strategies, and clean separation from the core Fastify backend. |
 | **Feedback loop for continuous learning** | Completed delivery sequences (actual stop order, time per stop, success/failure outcomes) are fed back into the driver behavior model. This creates a continuous learning cycle: routes improve as the system accumulates operational data. The feedback pipeline runs asynchronously — it does not block active routing. |
 | **Confidence scoring** | Each optimized route includes a confidence score (0–1) indicating how closely the ML-predicted sequence aligns with the heuristic-optimized result. Low-confidence routes are flagged for dispatcher review before dispatch. |
 
@@ -846,7 +847,7 @@ SynapseRoute extends the base research model with production-grade capabilities:
 | Route engine too slow at scale | Low | High | Pre-compute on order placement; cache result; limit to 10 stops/driver for demo |
 | Map library integration delay | Low | Medium | Default to Leaflet.js; switch to Mapbox only if time allows |
 | Real-time updates causing UI jank | Medium | Low | Throttle map re-renders; only update changed pins, not full redraw |
-| Python ML sidecar latency | Medium | Medium | Keep sidecar co-located with Fastify; connection pooling via Undici; cache predictions for identical feature vectors |
+| Python ML sidecar latency | Medium | Medium | Keep sidecar co-located with Fastify; use gRPC keepalives; cache predictions for identical feature vectors |
 | Demo environment has no internet | Low | High | Bundle fixture geocoordinates for fallback (Chennai sample dataset) |
 
 ---

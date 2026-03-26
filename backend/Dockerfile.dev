@@ -1,0 +1,32 @@
+# Development Dockerfile for Phoenix Backend
+FROM hexpm/elixir:1.16.0-erlang-26.2.1-alpine-3.19.0
+
+# Install build dependencies
+RUN apk add --no-cache \
+    build-base \
+    git \
+    nodejs \
+    npm \
+    postgresql-client
+
+WORKDIR /app
+
+# Install hex + rebar
+RUN mix local.hex --force && \
+    mix local.rebar --force
+
+# Copy mix files
+COPY mix.exs mix.lock ./
+COPY config config
+
+# Install dependencies
+RUN mix deps.get
+
+# Copy application
+COPY . .
+
+# Expose Phoenix port
+EXPOSE 4000
+
+# Start Phoenix server
+CMD ["mix", "phx.server"]
