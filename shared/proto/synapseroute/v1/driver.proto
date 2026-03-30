@@ -1,0 +1,91 @@
+syntax = "proto3";
+
+package synapseroute.v1;
+
+import "google/protobuf/timestamp.proto";
+import "synapseroute/v1/common.proto";
+
+// ═══════════════════════════════════════════════════════
+// Driver Service
+// ═══════════════════════════════════════════════════════
+
+service DriverService {
+  rpc CreateDriver(CreateDriverRequest) returns (CreateDriverResponse);
+  rpc GetDriver(GetDriverRequest) returns (GetDriverResponse);
+  rpc ListDrivers(ListDriversRequest) returns (ListDriversResponse);
+  rpc UpdateDriverPosition(UpdateDriverPositionRequest) returns (UpdateDriverPositionResponse);
+  rpc UpdateDriverStatus(UpdateDriverStatusRequest) returns (UpdateDriverStatusResponse);
+  rpc GetDriverPositions(GetDriverPositionsRequest) returns (GetDriverPositionsResponse);
+}
+
+message Driver {
+  string id = 1;
+  string name = 2;
+  optional double current_lat = 3;
+  optional double current_lng = 4;
+  DriverStatus status = 5;
+  optional string active_route_id = 6;
+  int32 total_deliveries = 7;
+  double success_rate = 8;
+  google.protobuf.Timestamp created_at = 9;
+}
+
+message CreateDriverRequest {
+  string name = 1;
+  optional double lat = 2;
+  optional double lng = 3;
+}
+
+message CreateDriverResponse {
+  Driver driver = 1;
+}
+
+message GetDriverRequest {
+  string id = 1;
+}
+
+message GetDriverResponse {
+  Driver driver = 1;
+}
+
+message ListDriversRequest {
+  optional DriverStatus status = 1;
+}
+
+message ListDriversResponse {
+  repeated Driver drivers = 1;
+}
+
+message UpdateDriverPositionRequest {
+  string id = 1;
+  double lat = 2;
+  double lng = 3;
+}
+
+message UpdateDriverPositionResponse {
+  Driver driver = 1;
+}
+
+message UpdateDriverStatusRequest {
+  string id = 1;
+  DriverStatus status = 2;
+  optional string active_route_id = 3;
+}
+
+message UpdateDriverStatusResponse {
+  Driver driver = 1;
+}
+
+message DriverPosition {
+  string id = 1;
+  string name = 2;
+  double lat = 3;
+  double lng = 4;
+  DriverStatus status = 5;
+}
+
+message GetDriverPositionsRequest {}
+
+message GetDriverPositionsResponse {
+  repeated DriverPosition positions = 1;
+}

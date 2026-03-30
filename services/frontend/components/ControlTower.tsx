@@ -1,32 +1,46 @@
 "use client";
 
-import { useState } from "react";
 import MapWrapper from "./MapWrapper";
 import { CommandPillNav } from "./CommandPillNav";
 import { KPICluster } from "./KPICluster";
 import { SystemTelemetryLog } from "./SystemTelemetryLog";
 import { EntityDrawer } from "./EntityDrawer";
+import { OrderMatrix } from "./OrderMatrix";
+import { AnalyticsDashboard } from "./AnalyticsDashboard";
+import { CreateOrderModal } from "./CreateOrderModal";
+import { useDashboardStore } from "@/store/dashboard-store";
 
 export function ControlTower() {
-  // For demonstration, we'll open the drawer after a short delay
-  // In a real app, this would be triggered by clicking a map marker Event
-  const [drawerOpen, setDrawerOpen] = useState(true);
+  const { activeTab } = useDashboardStore();
 
   return (
     <main className="relative w-screen h-screen overflow-hidden bg-[#0A0A0A] text-zinc-100">
-      {/* Z-0: The interactive map */}
-      <MapWrapper />
-
-      {/* Z-40 overlays */}
+      {/* Navigation — always visible */}
       <CommandPillNav />
-      <KPICluster />
-      
-      <EntityDrawer 
-        isOpen={drawerOpen} 
-        onClose={() => setDrawerOpen(false)} 
-      />
-      
-      <SystemTelemetryLog />
+
+      {/* Main content — switches by tab */}
+      {activeTab === "Live Map" && (
+        <>
+          <MapWrapper />
+          <KPICluster />
+          <EntityDrawer />
+          <SystemTelemetryLog />
+        </>
+      )}
+
+      {activeTab === "Order Matrix" && (
+        <>
+          <OrderMatrix />
+          <EntityDrawer />
+        </>
+      )}
+
+      {activeTab === "Analytics" && (
+        <AnalyticsDashboard />
+      )}
+
+      {/* Create order modal — global */}
+      <CreateOrderModal />
     </main>
   );
 }

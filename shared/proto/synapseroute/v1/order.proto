@@ -1,0 +1,95 @@
+syntax = "proto3";
+
+package synapseroute.v1;
+
+import "google/protobuf/timestamp.proto";
+import "synapseroute/v1/common.proto";
+
+// ═══════════════════════════════════════════════════════
+// Order Service
+// ═══════════════════════════════════════════════════════
+
+service OrderService {
+  rpc CreateOrder(CreateOrderRequest) returns (CreateOrderResponse);
+  rpc GetOrder(GetOrderRequest) returns (GetOrderResponse);
+  rpc ListOrders(ListOrdersRequest) returns (ListOrdersResponse);
+  rpc UpdateOrderStatus(UpdateOrderStatusRequest) returns (UpdateOrderStatusResponse);
+  rpc UpdateOrderRisk(UpdateOrderRiskRequest) returns (UpdateOrderRiskResponse);
+}
+
+// ─── Messages ───
+
+message Order {
+  string id = 1;
+  string recipient_name = 2;
+  string raw_address = 3;
+  optional double lat = 4;
+  optional double lng = 5;
+  optional string zone_id = 6;
+  LocationType location_type = 7;
+  TimePreference time_preference = 8;
+  optional google.protobuf.Timestamp scheduled_time = 9;
+  OrderStatus status = 10;
+  optional double failure_prob = 11;
+  optional RiskTier risk_tier = 12;
+  optional string assigned_driver_id = 13;
+  optional google.protobuf.Timestamp eta = 14;
+  google.protobuf.Timestamp created_at = 15;
+  optional google.protobuf.Timestamp completed_at = 16;
+}
+
+// Create
+message CreateOrderRequest {
+  string recipient_name = 1;
+  string raw_address = 2;
+  LocationType location_type = 3;
+  TimePreference time_preference = 4;
+  optional google.protobuf.Timestamp scheduled_time = 5;
+}
+
+message CreateOrderResponse {
+  Order order = 1;
+}
+
+// Get
+message GetOrderRequest {
+  string id = 1;
+}
+
+message GetOrderResponse {
+  Order order = 1;
+}
+
+// List
+message ListOrdersRequest {
+  optional OrderStatus status = 1;
+  optional RiskTier risk_tier = 2;
+  optional string zone_id = 3;
+  PaginationRequest pagination = 4;
+}
+
+message ListOrdersResponse {
+  repeated Order orders = 1;
+  PaginationResponse pagination = 2;
+}
+
+// Update Status
+message UpdateOrderStatusRequest {
+  string id = 1;
+  OrderStatus status = 2;
+}
+
+message UpdateOrderStatusResponse {
+  Order order = 1;
+}
+
+// Update Risk
+message UpdateOrderRiskRequest {
+  string id = 1;
+  double failure_prob = 2;
+  RiskTier risk_tier = 3;
+}
+
+message UpdateOrderRiskResponse {
+  Order order = 1;
+}

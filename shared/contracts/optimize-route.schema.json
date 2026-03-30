@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://synapseroute/contracts/optimize-route.schema.json",
+  "title": "OptimizeRoute",
+  "type": "object",
+  "required": ["driverId", "stops"],
+  "properties": {
+    "driverId": { "type": "string" },
+    "stops": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["lat", "lng"],
+        "properties": {
+          "orderId": { "type": "string" },
+          "lat": { "type": "number" },
+          "lng": { "type": "number" },
+          "riskScore": { "type": "number", "minimum": 0, "maximum": 1 }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

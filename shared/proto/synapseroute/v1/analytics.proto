@@ -1,0 +1,55 @@
+syntax = "proto3";
+
+package synapseroute.v1;
+
+import "synapseroute/v1/common.proto";
+
+// ═══════════════════════════════════════════════════════
+// Analytics Service
+// ═══════════════════════════════════════════════════════
+
+service AnalyticsService {
+  rpc GetSummary(GetSummaryRequest) returns (GetSummaryResponse);
+  rpc GetZoneSummary(GetZoneSummaryRequest) returns (GetZoneSummaryResponse);
+}
+
+message AnalyticsTotals {
+  int32 orders = 1;
+  int32 delivered = 2;
+  int32 failed = 3;
+  int32 pending = 4;
+  int32 in_transit = 5;
+  int32 assigned = 6;
+}
+
+message AnalyticsRates {
+  double delivery_success_rate = 1;
+  double avg_driver_success_rate = 2;
+}
+
+message RiskBreakdown {
+  int32 low = 1;
+  int32 medium = 2;
+  int32 high = 3;
+}
+
+message GetSummaryRequest {}
+
+message GetSummaryResponse {
+  AnalyticsTotals totals = 1;
+  AnalyticsRates rates = 2;
+  RiskBreakdown risk = 3;
+}
+
+message ZoneSummary {
+  string id = 1;
+  string name = 2;
+  double failure_rate = 3;
+  int32 order_count = 4;
+}
+
+message GetZoneSummaryRequest {}
+
+message GetZoneSummaryResponse {
+  repeated ZoneSummary zones = 1;
+}

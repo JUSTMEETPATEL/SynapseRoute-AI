@@ -1,0 +1,78 @@
+syntax = "proto3";
+
+package synapseroute.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// ═══════════════════════════════════════════════════════
+// Common types shared across services
+// ═══════════════════════════════════════════════════════
+
+message Coordinates {
+  double lat = 1;
+  double lng = 2;
+}
+
+enum LocationType {
+  LOCATION_TYPE_UNSPECIFIED = 0;
+  LOCATION_TYPE_RESIDENTIAL = 1;
+  LOCATION_TYPE_COMMERCIAL = 2;
+}
+
+enum TimePreference {
+  TIME_PREFERENCE_UNSPECIFIED = 0;
+  TIME_PREFERENCE_ASAP = 1;
+  TIME_PREFERENCE_SCHEDULED = 2;
+}
+
+enum OrderStatus {
+  ORDER_STATUS_UNSPECIFIED = 0;
+  ORDER_STATUS_PENDING = 1;
+  ORDER_STATUS_ASSIGNED = 2;
+  ORDER_STATUS_IN_TRANSIT = 3;
+  ORDER_STATUS_DELIVERED = 4;
+  ORDER_STATUS_FAILED = 5;
+}
+
+enum DriverStatus {
+  DRIVER_STATUS_UNSPECIFIED = 0;
+  DRIVER_STATUS_IDLE = 1;
+  DRIVER_STATUS_ON_ROUTE = 2;
+  DRIVER_STATUS_BREAK = 3;
+}
+
+enum RouteStatus {
+  ROUTE_STATUS_UNSPECIFIED = 0;
+  ROUTE_STATUS_PLANNED = 1;
+  ROUTE_STATUS_ACTIVE = 2;
+  ROUTE_STATUS_COMPLETED = 3;
+}
+
+enum RiskTier {
+  RISK_TIER_UNSPECIFIED = 0;
+  RISK_TIER_LOW = 1;
+  RISK_TIER_MEDIUM = 2;
+  RISK_TIER_HIGH = 3;
+}
+
+enum EventType {
+  EVENT_TYPE_UNSPECIFIED = 0;
+  EVENT_TYPE_RISK_FLAGGED = 1;
+  EVENT_TYPE_REROUTED = 2;
+  EVENT_TYPE_DELIVERED = 3;
+  EVENT_TYPE_FAILED = 4;
+  EVENT_TYPE_DELAYED = 5;
+}
+
+// Pagination
+message PaginationRequest {
+  int32 page = 1;
+  int32 limit = 2;
+}
+
+message PaginationResponse {
+  int32 page = 1;
+  int32 limit = 2;
+  int32 total = 3;
+  int32 total_pages = 4;
+}

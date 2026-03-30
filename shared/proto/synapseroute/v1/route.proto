@@ -1,0 +1,86 @@
+syntax = "proto3";
+
+package synapseroute.v1;
+
+import "google/protobuf/timestamp.proto";
+import "synapseroute/v1/common.proto";
+
+// ═══════════════════════════════════════════════════════
+// Route Service
+// ═══════════════════════════════════════════════════════
+
+service RouteService {
+  rpc CreateRoute(CreateRouteRequest) returns (CreateRouteResponse);
+  rpc GetRoute(GetRouteRequest) returns (GetRouteResponse);
+  rpc ListRoutes(ListRoutesRequest) returns (ListRoutesResponse);
+  rpc UpdateRouteStatus(UpdateRouteStatusRequest) returns (UpdateRouteStatusResponse);
+}
+
+message RouteStop {
+  string id = 1;
+  string order_id = 2;
+  int32 sequence = 3;
+  optional google.protobuf.Timestamp eta = 4;
+  optional google.protobuf.Timestamp arrived_at = 5;
+  string status = 6;  // PENDING, COMPLETED, FAILED, SKIPPED
+}
+
+message Route {
+  string id = 1;
+  string driver_id = 2;
+  double depot_lat = 3;
+  double depot_lng = 4;
+  optional double total_distance_km = 5;
+  optional int32 total_duration_min = 6;
+  optional double confidence_score = 7;
+  RouteStatus status = 8;
+  repeated RouteStop stops = 9;
+  google.protobuf.Timestamp created_at = 10;
+  google.protobuf.Timestamp updated_at = 11;
+}
+
+message CreateRouteRequest {
+  string driver_id = 1;
+  double depot_lat = 2;
+  double depot_lng = 3;
+  optional double total_distance_km = 4;
+  optional int32 total_duration_min = 5;
+  optional double confidence_score = 6;
+  repeated CreateRouteStopInput stops = 7;
+}
+
+message CreateRouteStopInput {
+  string order_id = 1;
+  int32 sequence = 2;
+  optional google.protobuf.Timestamp eta = 3;
+}
+
+message CreateRouteResponse {
+  Route route = 1;
+}
+
+message GetRouteRequest {
+  string id = 1;
+}
+
+message GetRouteResponse {
+  Route route = 1;
+}
+
+message ListRoutesRequest {
+  optional string driver_id = 1;
+  optional RouteStatus status = 2;
+}
+
+message ListRoutesResponse {
+  repeated Route routes = 1;
+}
+
+message UpdateRouteStatusRequest {
+  string id = 1;
+  RouteStatus status = 2;
+}
+
+message UpdateRouteStatusResponse {
+  Route route = 1;
+}

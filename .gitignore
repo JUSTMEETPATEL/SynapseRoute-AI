@@ -1,0 +1,29 @@
+node_modules/
+.env
+.env.*
+!.env.example
+!.env.local.example
+.DS_Store
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.pyc
+__pycache__/
+.pytest_cache/
+.venv/
+dist/
+.next/
+coverage/
+
+# Turborepo
+.turbo/
+
+# Prisma
+services/gateway/prisma/migrations/**/migration_lock.toml
+
+# ConnectRPC / Buf generated code
+shared/proto/gen/
+
+# Docker volumes
+pgdata/

@@ -1,0 +1,185 @@
+services:
+  # ─── Data Layer ───
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: synapse
+      POSTGRES_PASSWORD: synapse_dev
+      POSTGRES_DB: synapseroute_dev
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U synapse -d synapseroute_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ─── API Gateway ───
+  gateway:
+    build:
+      context: ./services/gateway
+      dockerfile: Dockerfile.dev
+    ports:
+      - "3001:3001"
+    environment:
+      GATEWAY_HOST: "0.0.0.0"
+      GATEWAY_PORT: 3001
+      DATABASE_URL: postgresql://synapse:synapse_dev@postgres:5432/synapseroute_dev
+      BETTER_AUTH_SECRET: dev-secret-change-in-production-minimum-32-chars
+      BETTER_AUTH_URL: http://localhost:3001
+      REDIS_URL: redis://redis:6379
+      ROUTING_ML_URL: http://routing-ml:8000
+      PREDICTOR_URL: http://failure-predictor:8001
+      ORDER_SERVICE_URL: http://order-service:50051
+      ROUTE_SERVICE_URL: http://route-service:50052
+      DRIVER_SERVICE_URL: http://driver-service:50053
+      ANALYTICS_SERVICE_URL: http://analytics-service:50054
+      LOG_LEVEL: debug
+    volumes:
+      - ./services/gateway:/app
+      - /app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ─── gRPC Microservices ───
+  order-service:
+    build:
+      context: ./services/order-service
+      dockerfile: Dockerfile.dev
+    ports:
+      - "50051:50051"
+    environment:
+      PORT: 50051
+      DATABASE_URL: postgresql://synapse:synapse_dev@postgres:5432/synapseroute_dev
+      LOG_LEVEL: debug
+    volumes:
+      - ./services/order-service:/app
+      - /app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  route-service:
+    build:
+      context: ./services/route-service
+      dockerfile: Dockerfile.dev
+    ports:
+      - "50052:50052"
+    environment:
+      PORT: 50052
+      DATABASE_URL: postgresql://synapse:synapse_dev@postgres:5432/synapseroute_dev
+      ROUTING_ML_URL: http://routing-ml:8000
+      LOG_LEVEL: debug
+    volumes:
+      - ./services/route-service:/app
+      - /app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  driver-service:
+    build:
+      context: ./services/driver-service
+      dockerfile: Dockerfile.dev
+    ports:
+      - "50053:50053"
+    environment:
+      PORT: 50053
+      DATABASE_URL: postgresql://synapse:synapse_dev@postgres:5432/synapseroute_dev
+      LOG_LEVEL: debug
+    volumes:
+      - ./services/driver-service:/app
+      - /app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  analytics-service:
+    build:
+      context: ./services/analytics-service
+      dockerfile: Dockerfile.dev
+    ports:
+      - "50054:50054"
+    environment:
+      PORT: 50054
+      DATABASE_URL: postgresql://synapse:synapse_dev@postgres:5432/synapseroute_dev
+      LOG_LEVEL: debug
+    volumes:
+      - ./services/analytics-service:/app
+      - /app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ─── ML Services ───
+  routing-ml:
+    build:
+      context: ./services/routing-ml
+      dockerfile: Dockerfile.dev
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./services/routing-ml:/app
+
+  failure-predictor:
+    build:
+      context: ./services/failure-predictor
+      dockerfile: Dockerfile.dev
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./services/failure-predictor:/app
+
+  # ─── Frontend ───
+  frontend:
+    build:
+      context: ./services/frontend
+      dockerfile: Dockerfile.dev
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:3001
+      NEXT_PUBLIC_WS_URL: http://localhost:3001
+    volumes:
+      - ./services/frontend:/app
+      - /app/node_modules
+    depends_on:
+      - gateway
+
+  # ─── Observability ───
+  prometheus:
+    image: prom/prometheus:v3.2.1
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+    volumes:
+      - ./ops/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana:11.5.2
+    ports:
+      - "3002:3000"
+    volumes:
+      - ./ops/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./ops/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+
+volumes:
+  pgdata:

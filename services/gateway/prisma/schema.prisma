@@ -1,0 +1,256 @@
+// ─────────────────────────────────────────────────────
+// SynapseRoute AI — Prisma Schema
+// Single source of truth for all domain models + auth
+// ─────────────────────────────────────────────────────
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+generator pothos {
+  provider = "prisma-pothos-types"
+}
+
+// ═══════════════════════════════════════════════════════
+// Better Auth Tables
+// ═══════════════════════════════════════════════════════
+
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  email         String    @unique
+  emailVerified Boolean   @default(false)
+  image         String?
+  role          UserRole  @default(DISPATCHER)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  sessions      Session[]
+  accounts      Account[]
+
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accountId         String
+  providerId        String
+  accessToken       String?
+  refreshToken      String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope             String?
+  idToken           String?
+  password          String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([userId])
+  @@map("accounts")
+}
+
+model Verification {
+  id         String   @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("verifications")
+}
+
+// ═══════════════════════════════════════════════════════
+// Domain Models — PRD §11
+// ═══════════════════════════════════════════════════════
+
+model Order {
+  id               String         @id @default(uuid()) @db.Uuid
+  recipientName    String         @map("recipient_name")
+  rawAddress       String         @map("raw_address")
+  lat              Float?
+  lng              Float?
+  zoneId           String?        @map("zone_id")
+  zone             Zone?          @relation(fields: [zoneId], references: [id])
+  locationType     LocationType   @default(RESIDENTIAL) @map("location_type")
+  timePreference   TimePreference @default(ASAP) @map("time_preference")
+  scheduledTime    DateTime?      @map("scheduled_time")
+  status           OrderStatus    @default(PENDING)
+  failureProb      Float?         @map("failure_prob")
+  riskTier         RiskTier?      @map("risk_tier")
+  assignedDriverId String?        @map("assigned_driver_id") @db.Uuid
+  assignedDriver   Driver?        @relation(fields: [assignedDriverId], references: [id])
+  eta              DateTime?
+  createdAt        DateTime       @default(now()) @map("created_at")
+  completedAt      DateTime?      @map("completed_at")
+
+  routeStops RouteStop[]
+  events     DeliveryEvent[]
+
+  @@index([status])
+  @@index([zoneId])
+  @@index([assignedDriverId])
+  @@index([createdAt])
+  @@map("orders")
+}
+
+model Driver {
+  id              String       @id @default(uuid()) @db.Uuid
+  name            String
+  currentLat      Float?       @map("current_lat")
+  currentLng      Float?       @map("current_lng")
+  status          DriverStatus @default(IDLE)
+  activeRouteId   String?      @map("active_route_id") @db.Uuid
+  totalDeliveries Int          @default(0) @map("total_deliveries")
+  successRate     Float        @default(1.0) @map("success_rate")
+  createdAt       DateTime     @default(now()) @map("created_at")
+
+  orders Order[]
+  routes Route[]
+
+  @@map("drivers")
+}
+
+model Route {
+  id               String      @id @default(uuid()) @db.Uuid
+  driverId         String      @map("driver_id") @db.Uuid
+  driver           Driver      @relation(fields: [driverId], references: [id])
+  depotLat         Float       @map("depot_lat")
+  depotLng         Float       @map("depot_lng")
+  totalDistanceKm  Float?      @map("total_distance_km")
+  totalDurationMin Int?        @map("total_duration_min")
+  confidenceScore  Float?      @map("confidence_score")
+  status           RouteStatus @default(PLANNED)
+  createdAt        DateTime    @default(now()) @map("created_at")
+  updatedAt        DateTime    @updatedAt @map("updated_at")
+
+  stops RouteStop[]
+
+  @@index([driverId])
+  @@index([status])
+  @@map("routes")
+}
+
+model RouteStop {
+  id        String          @id @default(uuid()) @db.Uuid
+  routeId   String          @map("route_id") @db.Uuid
+  route     Route           @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  orderId   String          @map("order_id") @db.Uuid
+  order     Order           @relation(fields: [orderId], references: [id])
+  sequence  Int
+  eta       DateTime?
+  arrivedAt DateTime?       @map("arrived_at")
+  status    RouteStopStatus @default(PENDING)
+
+  @@unique([routeId, sequence])
+  @@index([orderId])
+  @@map("route_stops")
+}
+
+model DeliveryEvent {
+  id        String    @id @default(uuid()) @db.Uuid
+  orderId   String    @map("order_id") @db.Uuid
+  order     Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  eventType EventType @map("event_type")
+  timestamp DateTime  @default(now())
+  payload   Json?
+
+  @@index([orderId])
+  @@index([eventType])
+  @@index([timestamp])
+  @@map("delivery_events")
+}
+
+model Zone {
+  id          String  @id
+  name        String
+  failureRate Float   @default(0.05) @map("failure_rate")
+  centerLat   Float   @map("center_lat")
+  centerLng   Float   @map("center_lng")
+
+  orders Order[]
+
+  @@map("zones")
+}
+
+// ═══════════════════════════════════════════════════════
+// Enums
+// ═══════════════════════════════════════════════════════
+
+enum UserRole {
+  ADMIN
+  DISPATCHER
+  VIEWER
+}
+
+enum LocationType {
+  RESIDENTIAL
+  COMMERCIAL
+}
+
+enum TimePreference {
+  ASAP
+  SCHEDULED
+}
+
+enum OrderStatus {
+  PENDING
+  ASSIGNED
+  IN_TRANSIT
+  DELIVERED
+  FAILED
+}
+
+enum DriverStatus {
+  IDLE
+  ON_ROUTE
+  BREAK
+}
+
+enum RouteStatus {
+  PLANNED
+  ACTIVE
+  COMPLETED
+}
+
+enum RouteStopStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  SKIPPED
+}
+
+enum RiskTier {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum EventType {
+  RISK_FLAGGED
+  REROUTED
+  DELIVERED
+  FAILED
+  DELAYED
+}
