@@ -1,213 +1,144 @@
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, LocationType, TimePreference, OrderStatus, RiskTier } from "@prisma/client";
+import { randomUUID } from "node:crypto";
 
 const prisma = new PrismaClient();
 
-async function main() {
-  console.log("🌱 Seeding database...");
+// Pan-India zones
+const INDIA_ZONES = [
+  { id: "Z-DEL", name: "Delhi NCR", centerLat: 28.7041, centerLng: 77.1025, failureRate: 0.08 },
+  { id: "Z-MUM", name: "Mumbai MMR", centerLat: 19.0760, centerLng: 72.8777, failureRate: 0.09 },
+  { id: "Z-BLR", name: "Bangalore", centerLat: 12.9716, centerLng: 77.5946, failureRate: 0.07 },
+  { id: "Z-HYD", name: "Hyderabad", centerLat: 17.3850, centerLng: 78.4867, failureRate: 0.05 },
+  { id: "Z-MAA", name: "Chennai", centerLat: 13.0827, centerLng: 80.2707, failureRate: 0.06 },
+  { id: "Z-CCU", name: "Kolkata", centerLat: 22.5726, centerLng: 88.3639, failureRate: 0.10 },
+  { id: "Z-PNQ", name: "Pune", centerLat: 18.5204, centerLng: 73.8567, failureRate: 0.04 },
+  { id: "Z-AMD", name: "Ahmedabad", centerLat: 23.0225, centerLng: 72.5714, failureRate: 0.03 },
+];
 
-  // ─── Zones (Chennai districts with synthetic failure rates) ───
-  const zones = await Promise.all([
-    prisma.zone.upsert({
-      where: { id: "Z1" },
-      update: {},
-      create: {
-        id: "Z1",
-        name: "Chennai Central",
-        failureRate: 0.04,
-        centerLat: 13.0827,
-        centerLng: 80.2707,
-      },
-    }),
-    prisma.zone.upsert({
-      where: { id: "Z2" },
-      update: {},
-      create: {
-        id: "Z2",
-        name: "T. Nagar",
-        failureRate: 0.06,
-        centerLat: 13.0418,
-        centerLng: 80.2341,
-      },
-    }),
-    prisma.zone.upsert({
-      where: { id: "Z3" },
-      update: {},
-      create: {
-        id: "Z3",
-        name: "Adyar",
-        failureRate: 0.03,
-        centerLat: 13.0063,
-        centerLng: 80.2574,
-      },
-    }),
-    prisma.zone.upsert({
-      where: { id: "Z4" },
-      update: {},
-      create: {
-        id: "Z4",
-        name: "Anna Nagar",
-        failureRate: 0.08,
-        centerLat: 13.0860,
-        centerLng: 80.2101,
-      },
-    }),
-    prisma.zone.upsert({
-      where: { id: "Z5" },
-      update: {},
-      create: {
-        id: "Z5",
-        name: "Velachery",
-        failureRate: 0.10,
-        centerLat: 12.9815,
-        centerLng: 80.2180,
-      },
-    }),
-    prisma.zone.upsert({
-      where: { id: "Z6" },
-      update: {},
-      create: {
-        id: "Z6",
-        name: "Mylapore",
-        failureRate: 0.05,
-        centerLat: 13.0339,
-        centerLng: 80.2695,
-      },
-    }),
-  ]);
-  console.log(`  ✓ ${zones.length} zones seeded`);
+function generateRandomOrderInZone(zone: typeof INDIA_ZONES[0], i: number) {
+  // Scatter lat/lng around the zone center (±0.2 degrees ~ ±22km for massive city sprawl)
+  const offsetLat = (Math.random() - 0.5) * 0.4;
+  const offsetLng = (Math.random() - 0.5) * 0.4;
+  
+  const isHighRisk = Math.random() > 0.85; // 15% high risk
+  const failureProb = isHighRisk ? 0.6 + Math.random() * 0.3 : 0.01 + Math.random() * 0.1;
+
+  // Generic Indian names for variety
+  const firstNames = ["Aarav", "Vivaan", "Aditya", "Vihaan", "Arjun", "Sai", "Manoj", "Rahul", "Priya", "Neha", "Anita", "Riya", "Kavita", "Sita"];
+  const lastNames = ["Patel", "Sharma", "Singh", "Yadav", "Nair", "Iyer", "Rao", "Reddy", "Chauhan", "Gupta"];
+  const recipientName = `${firstNames[Math.floor(Math.random() * firstNames.length)]} ${lastNames[Math.floor(Math.random() * lastNames.length)]} ${i}`;
+
+  return {
+    id: randomUUID(),
+    recipientName,
+    rawAddress: `${Math.floor(Math.random() * 999) + 1} Main Road, Sector ${Math.floor(Math.random() * 50) + 1}, ${zone.name}`,
+    lat: zone.centerLat + offsetLat,
+    lng: zone.centerLng + offsetLng,
+    zoneId: zone.id,
+    locationType: (Math.random() > 0.4 ? LocationType.RESIDENTIAL : LocationType.COMMERCIAL) as LocationType,
+    timePreference: (Math.random() > 0.9 ? TimePreference.SCHEDULED : TimePreference.ASAP) as TimePreference,
+    scheduledTime: Math.random() > 0.9 ? new Date(Date.now() + Math.random() * 86400000) : null,
+    status: OrderStatus.PENDING as OrderStatus,
+    failureProb,
+    riskTier: (isHighRisk ? RiskTier.HIGH : failureProb > 0.05 ? RiskTier.MEDIUM : RiskTier.LOW) as RiskTier,
+  };
+}
+
+async function main() {
+  console.log("🌱 Seeding database with Pan-India Pan-India ML-aligned data...");
+
+  // ─── Delete existing dependent data to avoid constraint issues ───
+  await prisma.deliveryEvent.deleteMany({});
+  await prisma.routeStop.deleteMany({});
+  await prisma.route.deleteMany({});
+  await prisma.order.deleteMany({});
+  
+  // ─── Zones ───
+  const zones = await Promise.all(
+    INDIA_ZONES.map((z) =>
+      prisma.zone.upsert({
+        where: { id: z.id },
+        update: z,
+        create: z,
+      })
+    )
+  );
+  console.log(`  ✓ ${zones.length} Pan-India zones seeded`);
 
   // ─── Drivers ───
-  const drivers = await Promise.all([
-    prisma.driver.upsert({
-      where: { id: "00000000-0000-0000-0000-000000000001" },
-      update: {},
-      create: {
-        id: "00000000-0000-0000-0000-000000000001",
-        name: "Rajesh Kumar",
-        currentLat: 13.0827,
-        currentLng: 80.2707,
-        status: "IDLE",
-        totalDeliveries: 342,
-        successRate: 0.96,
-      },
-    }),
-    prisma.driver.upsert({
-      where: { id: "00000000-0000-0000-0000-000000000002" },
-      update: {},
-      create: {
-        id: "00000000-0000-0000-0000-000000000002",
-        name: "Priya Sharma",
-        currentLat: 13.0418,
-        currentLng: 80.2341,
-        status: "IDLE",
-        totalDeliveries: 287,
-        successRate: 0.98,
-      },
-    }),
-    prisma.driver.upsert({
-      where: { id: "00000000-0000-0000-0000-000000000003" },
-      update: {},
-      create: {
-        id: "00000000-0000-0000-0000-000000000003",
-        name: "Vikram Singh",
-        currentLat: 13.0063,
-        currentLng: 80.2574,
-        status: "IDLE",
-        totalDeliveries: 156,
-        successRate: 0.94,
-      },
-    }),
-  ]);
-  console.log(`  ✓ ${drivers.length} drivers seeded`);
+  const driverData = [];
+  const driverFirstNames = ["Ramesh", "Suresh", "Ravi", "Amit", "Karan", "Raj", "Manoj", "Prakash", "Gaurav", "Sunil"];
+  const driverLastNames = ["Kumar", "Singh", "Patel", "Yadav", "Sharma", "Chauhan", "Das", "Jadhav"];
 
-  // ─── Demo Orders ───
-  const orders = await Promise.all([
-    prisma.order.upsert({
-      where: { id: "10000000-0000-0000-0000-000000000001" },
-      update: {},
-      create: {
-        id: "10000000-0000-0000-0000-000000000001",
-        recipientName: "Arjun Mehta",
-        rawAddress: "14 Anna Salai, Chennai, TN",
-        lat: 13.0604,
-        lng: 80.2496,
-        zoneId: "Z1",
-        locationType: "COMMERCIAL",
-        timePreference: "ASAP",
-        status: "PENDING",
-      },
-    }),
-    prisma.order.upsert({
-      where: { id: "10000000-0000-0000-0000-000000000002" },
-      update: {},
-      create: {
-        id: "10000000-0000-0000-0000-000000000002",
-        recipientName: "Kavitha Rajan",
-        rawAddress: "27 Besant Nagar, Adyar, Chennai",
-        lat: 13.0002,
-        lng: 80.2668,
-        zoneId: "Z3",
-        locationType: "RESIDENTIAL",
-        timePreference: "SCHEDULED",
-        scheduledTime: new Date(Date.now() + 3600_000),
-        status: "PENDING",
-      },
-    }),
-    prisma.order.upsert({
-      where: { id: "10000000-0000-0000-0000-000000000003" },
-      update: {},
-      create: {
-        id: "10000000-0000-0000-0000-000000000003",
-        recipientName: "Sanjay Nair",
-        rawAddress: "55 Velachery Main Road, Chennai",
-        lat: 12.9815,
-        lng: 80.2180,
-        zoneId: "Z5",
-        locationType: "RESIDENTIAL",
-        timePreference: "ASAP",
-        status: "PENDING",
-        failureProb: 0.73,
-        riskTier: "HIGH",
-      },
-    }),
-    prisma.order.upsert({
-      where: { id: "10000000-0000-0000-0000-000000000004" },
-      update: {},
-      create: {
-        id: "10000000-0000-0000-0000-000000000004",
-        recipientName: "Meera Iyer",
-        rawAddress: "9 Mylapore Tank, Chennai",
-        lat: 13.0339,
-        lng: 80.2695,
-        zoneId: "Z6",
-        locationType: "RESIDENTIAL",
-        timePreference: "ASAP",
-        status: "PENDING",
-        failureProb: 0.12,
-        riskTier: "LOW",
-      },
-    }),
-    prisma.order.upsert({
-      where: { id: "10000000-0000-0000-0000-000000000005" },
-      update: {},
-      create: {
-        id: "10000000-0000-0000-0000-000000000005",
-        recipientName: "Deepak Reddy",
-        rawAddress: "42 T. Nagar, Chennai",
-        lat: 13.0418,
-        lng: 80.2341,
-        zoneId: "Z2",
-        locationType: "COMMERCIAL",
-        timePreference: "ASAP",
-        status: "PENDING",
-        failureProb: 0.45,
-        riskTier: "MEDIUM",
-      },
-    }),
-  ]);
-  console.log(`  ✓ ${orders.length} demo orders seeded`);
+  let driverCounter = 1;
 
-  console.log("✅ Seeding complete!");
+  for (const zone of INDIA_ZONES) {
+    // Give Ahmedabad 12 drivers, the rest 3-4 drivers each
+    const numDrivers = zone.id === "Z-AMD" ? 12 : Math.floor(Math.random() * 2) + 3;
+    for (let i = 0; i < numDrivers; i++) {
+      driverData.push({
+        id: randomUUID(),
+        name: `${driverFirstNames[Math.floor(Math.random() * driverFirstNames.length)]} ${driverLastNames[Math.floor(Math.random() * driverLastNames.length)]} [${zone.id.split("-")[1]}]`,
+        currentLat: zone.centerLat + (Math.random() - 0.5) * 0.1,
+        currentLng: zone.centerLng + (Math.random() - 0.5) * 0.1,
+        status: "IDLE" as const,
+        totalDeliveries: Math.floor(Math.random() * 1000) + 50,
+        successRate: 0.85 + (Math.random() * 0.14), // 85% to 99%
+      });
+      driverCounter++;
+    }
+  }
+
+  const drivers = await Promise.all(
+    driverData.map((d) =>
+      prisma.driver.upsert({
+        where: { id: d.id },
+        update: d,
+        create: {
+          id: d.id,
+          name: d.name,
+          currentLat: d.currentLat,
+          currentLng: d.currentLng,
+          status: d.status,
+          successRate: d.successRate
+        },
+      })
+    )
+  );
+  console.log(`  ✓ ${drivers.length} drivers seeded (Heavy on Ahmedabad)`);
+
+  // ─── Generate ~450+ Demo Orders ───
+  const mockOrders = [];
+  let orderCounter = 1;
+  for (const zone of INDIA_ZONES) {
+    // Give Ahmedabad ~200 orders, others ~35 orders
+    const orderCount = zone.id === "Z-AMD" ? Math.floor(Math.random() * 20) + 180 : Math.floor(Math.random() * 15) + 30;
+    for (let i = 0; i < orderCount; i++) {
+        mockOrders.push(generateRandomOrderInZone(zone, orderCounter++));
+    }
+  }
+
+  // Batch insert orders since there are many
+  // Due to SQLite or simple Postgres limits, we chunk it to 100 per chunk
+  const chunks = [];
+  for (let i = 0; i < mockOrders.length; i += 100) {
+      chunks.push(mockOrders.slice(i, i + 100));
+  }
+
+  for (const chunk of chunks) {
+    await Promise.all(
+      chunk.map((o) =>
+        prisma.order.upsert({
+          where: { id: o.id },
+          update: o,
+          create: o,
+        })
+      )
+    );
+  }
+  
+  console.log(`  ✓ ${mockOrders.length} randomized demo orders seeded across all zones (Heavy on Ahmedabad)`);
+  console.log("✅ ML-Aligned Pan-India Seeding complete!");
 }
 
 main()

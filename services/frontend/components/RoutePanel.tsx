@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useRoutes, useOptimizeRoutes, useReroute } from "@/lib/hooks/use-routes";
 import { useQuery } from "@tanstack/react-query";
 import api from "@/lib/api";
@@ -28,7 +28,7 @@ export default function RoutePanel() {
   const { data: pendingOrders } = useQuery({
     queryKey: ["orders", "pending"],
     queryFn: async () => {
-      const res = await api.orders.list({ status: "PENDING", limit: 50 });
+      const res = await api.orders.list({ status: "PENDING", limit: 1000 });
       return res.data;
     },
     enabled: showOptimizeModal,
@@ -292,30 +292,49 @@ function OptimizeModal({
   onClose: () => void;
   result: { routes: Route[]; modelUsed: string; computationTimeMs: number } | null;
 }) {
-  const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
-  const [selectedDrivers, setSelectedDrivers] = useState<string[]>([]);
+  const [selectedZones, setSelectedZones] = useState<string[]>([]);
 
-  // Chennai depot default
-  const depotLat = 13.0827;
-  const depotLng = 80.2707;
+  // Central India Hub (Nagpur) as default massive routing center
+  const depotLat = 21.1458;
+  const depotLng = 79.0882;
 
-  const toggleOrder = (id: string) => {
-    setSelectedOrders((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-    );
+  const zoneGroups = useMemo(() => {
+    const groups: Record<string, { id: string, name: string, orders: Order[], drivers: Driver[] }> = {};
+    
+    orders.forEach(o => {
+      const zId = o.zone?.id ?? "Z-UNK";
+      const zName = o.zone?.name ?? "Unknown Sector";
+      if (!groups[zId]) groups[zId] = { id: zId, name: zName, orders: [], drivers: [] };
+      groups[zId].orders.push(o);
+    });
+
+    drivers.forEach(d => {
+      const match = d.name.match(/\[(.*?)\]/);
+      const zId = match ? `Z-${match[1]}` : "Z-UNK";
+      if (!groups[zId]) groups[zId] = { id: zId, name: "Remote Fleet", orders: [], drivers: [] };
+      groups[zId].drivers.push(d);
+    });
+
+    return Object.values(groups).sort((a,b) => b.orders.length - a.orders.length);
+  }, [orders, drivers]);
+
+  const toggleZone = (id: string) => {
+    setSelectedZones(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   };
 
-  const toggleDriver = (id: string) => {
-    setSelectedDrivers((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-    );
-  };
+  const selectedOrderIds = useMemo(() => {
+    return zoneGroups.filter(g => selectedZones.includes(g.id)).flatMap(g => g.orders.map(o => o.id));
+  }, [selectedZones, zoneGroups]);
+
+  const selectedDriverIds = useMemo(() => {
+    return zoneGroups.filter(g => selectedZones.includes(g.id)).flatMap(g => g.drivers.map(d => d.id));
+  }, [selectedZones, zoneGroups]);
 
   return (
     <div style={panelStyles.modalOverlay} onClick={onClose}>
       <div style={panelStyles.modal} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <h3 style={{ margin: 0, fontSize: 16 }}>⚡ Optimize Routes</h3>
+          <h3 style={{ margin: 0, fontSize: 16 }}>⚡ Pan-India Optimization Node</h3>
           <button style={panelStyles.closeBtn} onClick={onClose}>✕</button>
         </div>
 
@@ -328,89 +347,53 @@ function OptimizeModal({
               marginBottom: 12,
             }}>
               <div style={{ fontWeight: 600, fontSize: 14, color: "#22c55e" }}>
-                ✅ Routes Optimized
+                ✅ Matrix Solved
               </div>
               <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>
-                {result.routes.length} routes created using {result.modelUsed} in {result.computationTimeMs.toFixed(0)}ms
+                Successfully established {result.routes.length} paths using {result.modelUsed} in {result.computationTimeMs.toFixed(0)}ms
               </div>
             </div>
-            <button style={panelStyles.optimizeBtn} onClick={onClose}>
-              Done
+            <button style={{ ...panelStyles.optimizeBtn, width: '100%', justifyContent: 'center' }} onClick={onClose}>
+              Acknowledge
             </button>
           </div>
         ) : (
           <>
-            {/* Orders selection */}
             <div style={{ marginTop: 16 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
-                Pending Orders ({orders.length})
+              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, display: "flex", justifyContent: "space-between" }}>
+                <span>Regional Routing Buckets</span>
                 <button
-                  style={{ ...panelStyles.linkBtn, marginLeft: 8 }}
+                  style={panelStyles.linkBtn}
                   onClick={() =>
-                    setSelectedOrders(
-                      selectedOrders.length === orders.length
-                        ? []
-                        : orders.map((o) => o.id)
+                    setSelectedZones(
+                      selectedZones.length === zoneGroups.length ? [] : zoneGroups.map((g) => g.id)
                     )
                   }
                 >
-                  {selectedOrders.length === orders.length ? "Deselect All" : "Select All"}
+                  {selectedZones.length === zoneGroups.length ? "Deselect All" : "Select All"}
                 </button>
               </div>
-              <div style={panelStyles.selectionList}>
-                {orders.length === 0 && (
-                  <div style={{ fontSize: 12, opacity: 0.5, padding: 12 }}>
-                    No pending orders available
+
+              <div style={{ ...panelStyles.selectionList, maxHeight: 280 }}>
+                {zoneGroups.length === 0 && (
+                  <div style={{ fontSize: 12, opacity: 0.5, padding: 12, textAlign: "center" }}>
+                    No operations pending in any sectors
                   </div>
                 )}
-                {orders.map((order) => (
-                  <label key={order.id} style={panelStyles.checkItem}>
+                {zoneGroups.map((group) => (
+                  <label key={group.id} style={{ ...panelStyles.checkItem, opacity: group.orders.length === 0 ? 0.5 : 1 }}>
                     <input
                       type="checkbox"
-                      checked={selectedOrders.includes(order.id)}
-                      onChange={() => toggleOrder(order.id)}
+                      checked={selectedZones.includes(group.id)}
+                      onChange={() => toggleZone(group.id)}
+                      disabled={group.orders.length === 0}
                     />
-                    <span>{order.recipientName}</span>
-                    <span style={{ fontSize: 11, opacity: 0.5, marginLeft: "auto" }}>
-                      {order.zone?.name ?? "—"}
-                    </span>
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            {/* Drivers selection */}
-            <div style={{ marginTop: 16 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
-                Available Drivers ({drivers.length})
-                <button
-                  style={{ ...panelStyles.linkBtn, marginLeft: 8 }}
-                  onClick={() =>
-                    setSelectedDrivers(
-                      selectedDrivers.length === drivers.length
-                        ? []
-                        : drivers.map((d) => d.id)
-                    )
-                  }
-                >
-                  {selectedDrivers.length === drivers.length ? "Deselect All" : "Select All"}
-                </button>
-              </div>
-              <div style={panelStyles.selectionList}>
-                {drivers.map((driver) => (
-                  <label key={driver.id} style={panelStyles.checkItem}>
-                    <input
-                      type="checkbox"
-                      checked={selectedDrivers.includes(driver.id)}
-                      onChange={() => toggleDriver(driver.id)}
-                    />
-                    <span>{driver.name}</span>
-                    <span style={{
-                      fontSize: 11, marginLeft: "auto",
-                      color: driver.status === "IDLE" ? "#22c55e" : "#f59e0b",
-                    }}>
-                      {driver.status}
-                    </span>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      <span style={{ fontWeight: 600, fontSize: 14 }}>{group.name}</span>
+                      <span style={{ fontSize: 11, color: "var(--color-muted)" }}>
+                        {group.orders.length} orders pending • {group.drivers.length} drivers mapped
+                      </span>
+                    </div>
                   </label>
                 ))}
               </div>
@@ -419,25 +402,27 @@ function OptimizeModal({
             <button
               style={{
                 ...panelStyles.optimizeBtn,
-                marginTop: 16,
+                marginTop: 20,
                 width: "100%",
-                opacity: selectedOrders.length === 0 || selectedDrivers.length === 0 || isLoading ? 0.5 : 1,
+                justifyContent: "center",
+                opacity: selectedOrderIds.length === 0 || selectedDriverIds.length === 0 || isLoading ? 0.5 : 1,
               }}
-              disabled={selectedOrders.length === 0 || selectedDrivers.length === 0 || isLoading}
+              disabled={selectedOrderIds.length === 0 || selectedDriverIds.length === 0 || isLoading}
               onClick={() =>
                 onOptimize({
-                  orderIds: selectedOrders,
-                  driverIds: selectedDrivers,
-                  depotLat,
-                  depotLng,
+                  orderIds: selectedOrderIds,
+                  driverIds: selectedDriverIds,
+                  // Pass proper depot if single city, otherwise central hub
+                  depotLat: selectedZones.length === 1 ? (orders.find(o => o.zoneId === selectedZones[0])?.zone?.centerLat ?? depotLat) : depotLat,
+                  depotLng: selectedZones.length === 1 ? (orders.find(o => o.zoneId === selectedZones[0])?.zone?.centerLng ?? depotLng) : depotLng,
                 })
               }
             >
               {isLoading ? (
-                <span>⏳ Optimizing...</span>
+                <span>⏳ Running {selectedOrderIds.length} points through Engine...</span>
               ) : (
                 <span>
-                  ⚡ Optimize {selectedOrders.length} orders across {selectedDrivers.length} drivers
+                  ⚡ Optimize {selectedOrderIds.length} orders for {selectedDriverIds.length} drivers
                 </span>
               )}
             </button>

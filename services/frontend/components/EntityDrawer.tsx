@@ -126,7 +126,11 @@ function DriverDetails({ driver }: { driver: Driver }) {
   );
 }
 
+import { useReroute } from "@/lib/hooks/use-routes";
+
 function OrderDetails({ order }: { order: Order }) {
+  const rerouteMutation = useReroute();
+
   return (
     <>
       <InfoRow
@@ -168,6 +172,21 @@ function OrderDetails({ order }: { order: Order }) {
           <p className="text-xs text-pulse-red/80">
             High risk of delivery failure based on zone history and current conditions.
           </p>
+          <div className="mt-3">
+            <button
+              disabled={rerouteMutation.isPending}
+              onClick={() => {
+                if (order.driverId) {
+                  rerouteMutation.mutate({ driverId: order.driverId, reason: "high_risk_stop" });
+                } else {
+                  useDashboardStore.getState().setActiveTab("Routes");
+                }
+              }}
+              className="w-full py-2 bg-pulse-red/20 hover:bg-pulse-red/30 text-pulse-red border border-pulse-red/30 rounded text-xs font-semibold uppercase tracking-wider transition-colors flex justify-center items-center gap-2"
+            >
+              {rerouteMutation.isPending ? "Rerouting..." : (order.driverId ? "Reroute Assigned Driver" : "Optimize Delivery Routes")}
+            </button>
+          </div>
         </div>
       )}
     </>

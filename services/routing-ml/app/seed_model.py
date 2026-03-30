@@ -13,37 +13,30 @@ from datetime import datetime, timezone
 
 from app.ml.ppm import build_ppm_model
 
-# Chennai zones from the gateway seed data
-CHENNAI_ZONES = [
-    "Z-TNR",    # T. Nagar
-    "Z-ADY",    # Adyar
-    "Z-MYL",    # Mylapore
-    "Z-ANN",    # Anna Nagar
-    "Z-VEL",    # Velachery
-    "Z-THR",    # Thiruvanmiyur
+# Pan-India zones
+INDIA_ZONES = [
+    "Z-DEL",    # Delhi NCR
+    "Z-MUM",    # Mumbai MMR
+    "Z-BLR",    # Bangalore
+    "Z-HYD",    # Hyderabad
+    "Z-MAA",    # Chennai
+    "Z-CCU",    # Kolkata
+    "Z-PNQ",    # Pune
+    "Z-AMD",    # Ahmedabad
 ]
 
-# Plausible zone transition patterns (simulating driver behavior)
-# Drivers tend to cluster nearby zones and avoid backtracking
+# Plausible Inter-city or generic zone transition patterns for the ML dictionary
 ROUTE_TEMPLATES = [
-    # South Chennai sweep
-    ["stz", "Z-MYL", "Z-ADY", "Z-THR", "Z-VEL"],
-    ["stz", "Z-ADY", "Z-MYL", "Z-THR", "Z-VEL"],
-    ["stz", "Z-THR", "Z-ADY", "Z-MYL", "Z-VEL"],
-    ["stz", "Z-VEL", "Z-THR", "Z-ADY", "Z-MYL"],
-    # West to East
-    ["stz", "Z-ANN", "Z-TNR", "Z-MYL", "Z-ADY"],
-    ["stz", "Z-TNR", "Z-ANN", "Z-MYL", "Z-ADY"],
-    ["stz", "Z-TNR", "Z-MYL", "Z-ADY", "Z-THR"],
-    # Full city routes
-    ["stz", "Z-ANN", "Z-TNR", "Z-MYL", "Z-ADY", "Z-THR", "Z-VEL"],
-    ["stz", "Z-VEL", "Z-THR", "Z-ADY", "Z-MYL", "Z-TNR", "Z-ANN"],
-    ["stz", "Z-TNR", "Z-ANN", "Z-VEL", "Z-THR", "Z-ADY", "Z-MYL"],
-    # Short routes
-    ["stz", "Z-MYL", "Z-TNR"],
-    ["stz", "Z-ADY", "Z-THR"],
-    ["stz", "Z-ANN", "Z-TNR", "Z-MYL"],
-    ["stz", "Z-VEL", "Z-THR", "Z-ADY"],
+    ["stz", "Z-AMD", "Z-MUM", "Z-PNQ"],
+    ["stz", "Z-DEL", "Z-AMD", "Z-MUM"],
+    ["stz", "Z-BLR", "Z-HYD", "Z-MAA"],
+    ["stz", "Z-CCU", "Z-HYD", "Z-BLR"],
+    ["stz", "Z-MUM", "Z-PNQ", "Z-BLR"],
+    ["stz", "Z-DEL", "Z-CCU", "Z-MAA"],
+    # Ahmedabad heavy templates
+    ["stz", "Z-AMD", "Z-DEL"],
+    ["stz", "Z-AMD", "Z-MUM", "Z-BLR"],
+    ["stz", "Z-AMD", "Z-PNQ", "Z-HYD", "Z-MAA"],
 ]
 
 
@@ -59,7 +52,7 @@ def generate_synthetic_sequences(n_sequences: int = 500) -> list:
 
         # Randomly inject extra zones (simulating multi-stop routes)
         if random.random() > 0.3:
-            extra_zone = random.choice(CHENNAI_ZONES)
+            extra_zone = random.choice(INDIA_ZONES)
             insert_pos = random.randint(1, len(seq))
             seq.insert(insert_pos, extra_zone)
 
@@ -74,7 +67,7 @@ def generate_synthetic_sequences(n_sequences: int = 500) -> list:
 
 
 def main():
-    print("Generating synthetic Chennai zone sequences...")
+    print("Generating synthetic Pan-India zone sequences...")
     sequences = generate_synthetic_sequences(500)
     print(f"  Generated {len(sequences)} sequences")
 
