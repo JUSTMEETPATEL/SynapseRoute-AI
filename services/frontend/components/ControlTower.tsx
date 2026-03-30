@@ -8,6 +8,7 @@ import { EntityDrawer } from "./EntityDrawer";
 import { OrderMatrix } from "./OrderMatrix";
 import { AnalyticsDashboard } from "./AnalyticsDashboard";
 import { CreateOrderModal } from "./CreateOrderModal";
+import RoutePanel from "./RoutePanel";
 import { useDashboardStore } from "@/store/dashboard-store";
 
 export function ControlTower() {
@@ -35,6 +36,12 @@ export function ControlTower() {
         </>
       )}
 
+      {activeTab === "Routes" && (
+        <div className="pt-24 px-6 h-full">
+          <RoutePanel />
+        </div>
+      )}
+
       {activeTab === "Analytics" && (
         <AnalyticsDashboard />
       )}
@@ -44,3 +51,4 @@ export function ControlTower() {
     </main>
   );
 }
+

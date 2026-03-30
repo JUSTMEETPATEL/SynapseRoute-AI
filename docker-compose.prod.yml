@@ -116,6 +116,40 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # ─── ML Services ───
+  routing-ml:
+    build:
+      context: ./services/routing-ml
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      MODEL_DIR: /app/models
+      LOG_LEVEL: info
+    volumes:
+      - routing_ml_models:/app/models
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  failure-predictor:
+    build:
+      context: ./services/failure-predictor
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      LOG_LEVEL: info
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
   # ─── Observability ───
   prometheus:
     image: prom/prometheus:v3.2.1
@@ -143,3 +177,4 @@ services:
 volumes:
   pgdata:
   grafana_data:
+  routing_ml_models:

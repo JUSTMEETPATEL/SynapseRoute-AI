@@ -59,6 +59,7 @@ export interface RouteStop {
   orderId: string;
   sequence: number;
   status: string;
+  eta: string | null;
   arrivedAt: string | null;
   order: Order;
 }
@@ -68,8 +69,12 @@ export interface Route {
   driverId: string;
   status: string;
   totalDistanceKm: number | null;
-  estimatedMinutes: number | null;
+  totalDurationMin: number | null;
+  confidenceScore: number | null;
+  depotLat: number;
+  depotLng: number;
   stops: RouteStop[];
+  driver?: Pick<Driver, "id" | "name">;
 }
 
 export interface DeliveryEvent {
@@ -158,6 +163,19 @@ export interface CreateOrderInput {
   locationType: LocationType;
   timePreference: TimePreference;
   scheduledTime?: string;
+}
+
+export interface OptimizeRouteInput {
+  orderIds: string[];
+  driverIds: string[];
+  depotLat: number;
+  depotLng: number;
+}
+
+export interface OptimizeRouteResponse {
+  routes: Route[];
+  modelUsed: string;
+  computationTimeMs: number;
 }
 
 // ─── Auth Types ───

@@ -146,19 +146,27 @@ export const api = {
 
   // ─── Routes ───
   routes: {
-    optimize: (driverId?: string) =>
-      request<{ data: unknown }>("/api/route/optimize", {
+    optimize: (input: import("./types").OptimizeRouteInput) =>
+      request<{ data: import("./types").OptimizeRouteResponse }>("/api/route/optimize", {
         method: "POST",
-        body: JSON.stringify({ driverId }),
+        body: JSON.stringify(input),
       }),
 
-    reroute: (driverId: string) =>
+    reroute: (driverId: string, reason?: string) =>
       request<{ data: unknown }>("/api/route/reroute", {
         method: "POST",
-        body: JSON.stringify({ driverId }),
+        body: JSON.stringify({ driverId, reason }),
       }),
 
-    list: () => request<{ data: import("./types").Route[] }>("/api/routes"),
+    list: (params?: { driverId?: string; status?: string }) => {
+      const qs = new URLSearchParams();
+      if (params?.driverId) qs.set("driverId", params.driverId);
+      if (params?.status) qs.set("status", params.status);
+      const query = qs.toString();
+      return request<{ data: import("./types").Route[] }>(
+        `/api/routes${query ? `?${query}` : ""}`,
+      );
+    },
   },
 
   // ─── Analytics ───

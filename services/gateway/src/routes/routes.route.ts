@@ -25,23 +25,23 @@ export async function routeRoutes(app: FastifyInstance) {
     async (req: FastifyRequest, reply: FastifyReply) => {
       const input = optimizeRouteSchema.parse(req.body);
 
-      // Fetch orders with coordinates
+      // Fetch orders with coordinates + zones
       const orders = await prisma.order.findMany({
         where: { id: { in: input.orderIds } },
         include: { zone: true },
       });
 
-      // Build payload for ML service
+      // Build payload for ML service (matches new routing-ml API)
       const mlPayload = {
-        order_ids: input.orderIds,
-        driver_ids: input.driverIds,
-        depot_coords: [input.depotLat, input.depotLng],
         stops: orders.map((o) => ({
           order_id: o.id,
-          lat: o.lat,
-          lng: o.lng,
+          lat: o.lat ?? 0,
+          lng: o.lng ?? 0,
+          zone_id: o.zoneId ?? "default",
           risk_score: o.failureProb ?? 0,
         })),
+        depot: { lat: input.depotLat, lng: input.depotLng },
+        driver_ids: input.driverIds,
       };
 
       try {
@@ -59,6 +59,8 @@ export async function routeRoutes(app: FastifyInstance) {
             total_duration_min: number;
             confidence_score?: number;
           }>;
+          model_used: string;
+          computation_time_ms: number;
         };
 
         // Persist routes in the database
@@ -101,7 +103,13 @@ export async function routeRoutes(app: FastifyInstance) {
           })
         );
 
-        return reply.code(201).send({ data: { routes: createdRoutes } });
+        return reply.code(201).send({
+          data: {
+            routes: createdRoutes,
+            modelUsed: mlResult.model_used,
+            computationTimeMs: mlResult.computation_time_ms,
+          },
+        });
       } catch (error) {
         app.log.error(error, "Route optimization failed");
         return reply.code(502).send({

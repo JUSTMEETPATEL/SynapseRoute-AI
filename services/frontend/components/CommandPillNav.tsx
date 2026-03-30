@@ -7,7 +7,7 @@ import { useDashboardStore, type ActiveTab } from "@/store/dashboard-store";
 
 export function CommandPillNav() {
   const { activeTab, setActiveTab } = useDashboardStore();
-  const tabs: ActiveTab[] = ["Live Map", "Order Matrix", "Analytics"];
+  const tabs: ActiveTab[] = ["Live Map", "Order Matrix", "Routes", "Analytics"];
 
   return (
     <div className="absolute top-6 left-6 z-40 flex items-center gap-4 bg-zinc-950/60 backdrop-blur-xl border border-zinc-800 rounded-full p-2 pr-6 shadow-2xl shadow-black/50">

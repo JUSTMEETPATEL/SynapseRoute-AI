@@ -133,8 +133,17 @@ services:
       dockerfile: Dockerfile.dev
     ports:
       - "8000:8000"
+    environment:
+      MODEL_DIR: /app/models
+      LOG_LEVEL: debug
     volumes:
       - ./services/routing-ml:/app
+      - routing_ml_models:/app/models
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
   failure-predictor:
     build:
@@ -142,8 +151,15 @@ services:
       dockerfile: Dockerfile.dev
     ports:
       - "8001:8001"
+    environment:
+      LOG_LEVEL: debug
     volumes:
       - ./services/failure-predictor:/app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
   # ─── Frontend ───
   frontend:
@@ -183,3 +199,4 @@ services:
 
 volumes:
   pgdata:
+  routing_ml_models:

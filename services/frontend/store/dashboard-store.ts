@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import type { Order, Driver } from "@/lib/types";
 
-export type ActiveTab = "Live Map" | "Order Matrix" | "Analytics";
+export type ActiveTab = "Live Map" | "Order Matrix" | "Routes" | "Analytics";
 
 interface DashboardState {
   // Active view
